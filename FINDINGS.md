@@ -152,9 +152,13 @@ The strategy lost money in 4 of 9 calendar years under pessimistic execution and
 
 ## Q3. Shape spread and battery dispatch
 
-The hourly block and the four 15-minute QH products are different ways to buy the same delivery hour. Shape spread is `hourly − mean(4 QH)`. Hour-of-day pattern is the chart at the top of the README and it's striking.
+The hourly block and the four 15-minute QH products are different ways to buy the same delivery hour. Shape spread is `hourly − mean(4 QH)`. Hour-of-day pattern:
 
-To pull out the mechanism while controlling for time of day, OLS with 23 hour-of-day dummies (one hour omitted as reference). The dummies absorb the duck curve itself; the σ coefficient then tells you the *within-hour* effect of intra-hour QH price σ on the shape spread. That separates "shape spread varies with hour" (obvious from the chart) from "shape spread varies with realised intra-hour volatility" (the actual mechanism).
+![Shape spread by hour of day](results/figures/q3_shape_by_hour.png)
+
++€10/MWh at the evening ramp, −€4/MWh at solar peak, every day, for seven and a half years. That's the duck curve as a tradeable spread.
+
+To pull out the mechanism while controlling for time of day, OLS with 23 hour-of-day fixed effects (one hour omitted as reference). The hour fixed effects absorb the duck curve itself; the σ coefficient then tells you the *within-hour* effect of intra-hour QH price σ on the shape spread. That separates "shape spread varies with hour" (obvious from the chart) from "shape spread varies with realised intra-hour volatility" (the actual mechanism).
 
 ```
 shape_spread ~ const + intra_hour_σ + 23 hour FE
