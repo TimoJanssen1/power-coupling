@@ -1,8 +1,9 @@
+```
 ▄▖             ▄▖  ▗      ▌      ▄▖            ▖  ▖▘        ▗       ▗       
 ▌ █▌▛▘▛▛▌▀▌▛▌  ▐ ▛▌▜▘▛▘▀▌▛▌▀▌▌▌  ▙▌▛▌▌▌▌█▌▛▘▖  ▛▖▞▌▌▛▘▛▘▛▌▛▘▜▘▛▘▌▌▛▘▜▘▌▌▛▘█▌
 ▙▌▙▖▌ ▌▌▌█▌▌▌  ▟▖▌▌▐▖▌ █▌▙▌█▌▙▌  ▌ ▙▌▚▚▘▙▖▌ ▖  ▌▝ ▌▌▙▖▌ ▙▌▄▌▐▖▌ ▙▌▙▖▐▖▙▌▌ ▙▖
                              ▄▌                                             
-
+```
 An applied-econometrics look at the German EPEX intraday electricity market, run on 7.6 years of free public data. Three structural questions, one tradeable spread that holds up and several findings that ran the wrong way against the original hypotheses (which I kept).
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
