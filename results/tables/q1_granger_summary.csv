@@ -1,0 +1,9 @@
+,value
+n_obs,66526.0
+ADF(fe)_pvalue,0.0
+ADF(price)_pvalue,1.4228610502803641e-11
+optimal_lag_AIC,24.0
+F_forward,11.045326353384487
+p_forward,2.067140651333864e-42
+F_reverse,8.307606966216417
+p_reverse,1.5497195111722e-29

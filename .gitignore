@@ -1,0 +1,45 @@
+# Virtual environments
+.venv/
+venv/
+env/
+.env
+
+# API keys and local config
+.env.local
+*.local.json
+.claude/
+
+# Python build artefacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Notebooks — keep .ipynb, ignore checkpoint dirs and outputs we don't want versioned
+.ipynb_checkpoints/
+
+# Data cache (parquet files are large and reproducible from API)
+~/.cache/power_microstructure/
+*.parquet
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Coverage and tooling reports
+.coverage
+htmlcov/
+coverage.xml
+*.cover
+
+# Logs and tmp output
+*.log
+/tmp/

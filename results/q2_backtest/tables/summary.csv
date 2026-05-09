@@ -1,0 +1,4 @@
+scenario,sharpe_annualised,sortino,max_drawdown_pct,win_rate_pct,n_trades,avg_hold_h,total_pnl_eur_per_mwh,avg_pnl_per_trade_eur_per_mwh,bootstrap_p_sharpe_pos
+optimistic,5.543,5.267,-19.32,66.48,1453,4.2,39313.78,27.057,0.0
+realistic,4.686,3.616,-24.5,63.25,1453,4.2,31849.11,21.92,0.0
+pessimistic,3.649,2.476,-75.36,60.36,1453,4.2,24384.45,16.782,0.0
