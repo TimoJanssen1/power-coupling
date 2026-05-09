@@ -1,6 +1,8 @@
-# German Intraday Power: Microstructur ⚡️🦆 
+# 🦆⚡ German Intraday Power: Microstructure & Spread Dynamics
 
 An applied-econometrics look at the German EPEX intraday electricity market, run on 7.6 years of free public data. Three structural questions, one tradeable spread that holds up and several findings that ran the wrong way against the original hypotheses (which I kept).
+
+The duck curve — solar overproduction collapsing midday prices while evening demand sends them back up — shows up not just in day-ahead markets but as a persistent, priceable spread between hourly and 15-minute quarter-hour products in the intraday market. That's the thread connecting all three questions.
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 [![Tests](https://img.shields.io/badge/tests-56%20passing-brightgreen.svg)](#tests)
