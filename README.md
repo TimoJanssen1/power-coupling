@@ -8,7 +8,7 @@
                                                                                __/ |                                                                                                    
                                                                               |___/                                                                                                                      
 ```
-An applied-econometrics look at the German EPEX intraday electricity market, run on 7.6 years of free public data. Three structural questions, one tradeable spread that holds up and several findings that ran the wrong way against the original hypotheses (which I kept).
+An applied-econometrics look at the German EPEX intraday electricity market, run on 7.6 years of free public data. Three structural questions, one tradeable spread that holds up and several findings that ran the wrong way against the original hypotheses (which I kept:´) ).
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 [![Tests](https://img.shields.io/badge/tests-56%20passing-brightgreen.svg)](#tests)
@@ -16,7 +16,7 @@ An applied-econometrics look at the German EPEX intraday electricity market, run
 
 ![Shape spread by hour of day](results/figures/q3_shape_by_hour.png)
 
-That's the headline result. The shape spread (price difference between buying one hourly block and four 15-minute QH blocks for the same delivery hour) swings from +€10/MWh at evening ramp to −€4/MWh at solar peak, every day, for seven and a half years. It's the duck curve as a tradeable spread, recovered cleanly from public data.
+The shape spread (price difference between buying one hourly block and four 15-minute QH blocks for the same delivery hour) swings from +€10/MWh at evening ramp to −€4/MWh at solar peak, every day, for seven and a half years. It's the duck curve as a tradeable spread, recovered cleanly from public data.
 
 ## Findings, short version
 
