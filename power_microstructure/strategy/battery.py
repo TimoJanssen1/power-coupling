@@ -1,36 +1,49 @@
 """
 Battery energy-storage system (BESS) dispatch simulator.
 
-Models a utility-scale BESS (~100 MW / 200 MWh, 2-hour duration) participating
-in the German DA + intraday markets. Solves the dispatch problem as a daily
-linear program over a 24-hour horizon, parameterised by:
+Models a utility-scale BESS (~100 MW / 200 MWh, 2-hour duration) doing energy
+arbitrage in the German day-ahead auction. Solves the dispatch problem as a
+daily linear program over a 24-hour horizon, parameterised by:
 
-  • the price signal it optimises against (DA forecast vs realised intraday)
+  • the price vector the LP optimises against
+  • the price vector cash flows settle at
   • the cycling, efficiency and wear constraints
   • the boundary state-of-charge between days
 
+Settlement convention (July 2026 revision): strategies that schedule against
+the DE/LU day-ahead price also SETTLE at the DE/LU day-ahead price — the
+schedule is committed in the DA auction and clears there. v1 settled all
+strategies at the series then believed to be the German intraday continuous
+index; that series is in fact the Belgian day-ahead price (see FINDINGS.md
+"Revision notes"), so v1's revenue was a DE-scheduled/BE-settled hybrid.
+
 Four strategies share the same simulator with different inputs:
 
-    naive       Hour-of-day heuristic (charge cheapest 2h, discharge richest 2h)
-    da_lp       LP against day-ahead prices — what a baseline operator does
-    intraday_lp LP against realised intraday continuous prices — perfect-foresight
-                ceiling (how much revenue is theoretically extractable)
-    da_plus_tilt LP against DA, then rebalance hourly using Q1 forecast-error
-                 tilt: when wind under-/over-performs the day-ahead forecast,
-                 expected intraday price for the next 5–13 h shifts by β·fe.
+    naive          Hour-of-day heuristic (charge the day's cheapest 2h,
+                   discharge the richest 2h), processed chronologically so
+                   energy cannot be discharged before it has been charged.
+    da_lp          LP against DE/LU DA prices, settled at DE/LU DA — what a
+                   baseline DA-auction arbitrage operator does. DA prices are
+                   known before gate closure, so this is implementable.
+    da_plus_tilt   LP against DA prices tilted by the Q1 forecast-error impact,
+                   settled at DA. The tilt uses realised forecast errors (not
+                   knowable at gate closure), so it is an UPPER BOUND on what
+                   such a signal could add — and it adds ~nothing.
+    alt_series_lp  LP optimised AND settled on the alternative price series
+                   passed to it. With this repo's data that series is the
+                   Belgian DA price (mislabelled "intraday" in v1) — retained
+                   as a cross-zonal reference point, not a foresight ceiling.
 
 All values are EUR. Energy is MWh. Power is MW. Time is hourly.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Callable
+from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
 from scipy.optimize import linprog
-
 
 # ---------------------------------------------------------------------------
 # Battery spec
@@ -172,11 +185,10 @@ class DispatchResult:
     @property
     def revenue_eur(self) -> float:
         s = self.schedule
-        # Revenue is realised AGAINST INTRADAY (the actual settled price).
-        # If the strategy clears charges/discharges in DA, those cash flows are
-        # already locked in at price_da; if it rebalances intraday, residual
-        # flows clear at price_id. The simulator collapses these into the
-        # "settlement price" column on the schedule.
+        # Cash flows clear at the "settlement_price" column, which each
+        # strategy sets to the market its schedule is actually committed in
+        # (DA-scheduled strategies settle at DA; alt_series_lp settles on the
+        # series it optimises).
         rev = (s["discharge_mwh"] * s["settlement_price"]).sum()
         cost = (s["charge_mwh"] * s["settlement_price"]).sum()
         wear = self.spec.wear_eur_per_mwh * s["discharge_mwh"].sum()
@@ -210,54 +222,61 @@ def strategy_naive(
     spec: BatterySpec,
 ) -> DispatchResult:
     """
-    Charge during the cheapest 2 hours of each day (= 200 MWh full charge),
-    discharge during the most expensive 2 hours of the same day. No
-    optimisation, no foresight beyond the calendar day.
+    Charge during the cheapest 2 hours of each day, discharge during the most
+    expensive 2 hours of the same day. No optimisation, no foresight beyond
+    the calendar day. Settles at the DA price it schedules against.
+
+    Hours are processed CHRONOLOGICALLY: a "richest" hour that falls before
+    the day's "cheapest" hours can only discharge energy already in storage
+    at that time — energy cannot be discharged before it has been charged.
+    (v1 charged all cheap hours first regardless of their position in the day,
+    which allowed physically impossible discharge-before-charge schedules.)
+
+    ``id_prices`` is recorded on the schedule for reference only.
     """
     da_prices = da_prices.dropna()
     id_prices = id_prices.reindex(da_prices.index).interpolate()
 
     rows = []
     soc = spec.soc_init
-    for day, day_prices in da_prices.groupby(da_prices.index.date):
+    for _day, day_prices in da_prices.groupby(da_prices.index.date):
         if len(day_prices) < 24:
             continue
         order = day_prices.argsort().values
-        cheapest = sorted(order[:2])
-        richest = sorted(order[-2:])
+        cheapest = set(order[:2])
+        richest = set(order[-2:])
 
         charge = np.zeros(len(day_prices))
         discharge = np.zeros(len(day_prices))
+        soc_path = np.zeros(len(day_prices))
 
-        # Charge cheapest hours up to capacity (2 h × 100 MW = 200 MWh)
-        for h in cheapest:
-            free = spec.energy_mwh - soc
-            if free <= 0:
-                break
-            qty = min(spec.power_mw * 1.0, free / spec.eta_charge)
-            charge[h] = qty
-            soc += spec.eta_charge * qty
-
-        # Discharge richest hours up to floor 0
-        for h in richest:
-            avail = soc * spec.eta_discharge
-            if avail <= 0:
-                break
-            qty = min(spec.power_mw * 1.0, avail)
-            discharge[h] = qty
-            soc -= qty / spec.eta_discharge
+        # Walk the day in time order; charge/discharge subject to the SoC
+        # actually available at that hour.
+        for t in range(len(day_prices)):
+            if t in cheapest:
+                free = spec.energy_mwh - soc
+                if free > 0:
+                    qty = min(spec.power_mw * 1.0, free / spec.eta_charge)
+                    charge[t] = qty
+                    soc += spec.eta_charge * qty
+            elif t in richest:
+                avail = soc * spec.eta_discharge
+                if avail > 0:
+                    qty = min(spec.power_mw * 1.0, avail)
+                    discharge[t] = qty
+                    soc -= qty / spec.eta_discharge
+            soc_path[t] = soc
 
         for t, ts in enumerate(day_prices.index):
             rows.append({
                 "ts": ts,
                 "charge_mwh": charge[t],
                 "discharge_mwh": discharge[t],
-                "soc_mwh": soc,
-                "price_da": float(da_prices.iloc[da_prices.index.get_loc(ts)]),
-                "price_id": float(id_prices.iloc[id_prices.index.get_loc(ts)])
-                if ts in id_prices.index else float("nan"),
-                "settlement_price": float(id_prices.iloc[id_prices.index.get_loc(ts)])
-                if ts in id_prices.index else float(da_prices.iloc[da_prices.index.get_loc(ts)]),
+                "soc_mwh": soc_path[t],
+                "price_da": float(day_prices.iloc[t]),
+                "price_id": float(id_prices.loc[ts]) if ts in id_prices.index else float("nan"),
+                # Schedule is committed in the DA auction → settles at DA.
+                "settlement_price": float(day_prices.iloc[t]),
             })
 
     df = pd.DataFrame(rows).set_index("ts")
@@ -304,26 +323,39 @@ def _strategy_lp(
 def strategy_da_only_lp(
     da_prices: pd.Series, id_prices: pd.Series, spec: BatterySpec,
 ) -> DispatchResult:
-    """LP optimises against DA forecast (perfect foresight on DA);
-    cash flows clear at intraday continuous (the realised settlement)."""
+    """
+    LP optimised against DE/LU DA prices and SETTLED at DE/LU DA prices.
+
+    DA auction results are published before the schedule must be firm, so
+    optimising "against DA" involves no foresight — this is the implementable
+    baseline of a DA-auction arbitrage battery. ``id_prices`` is unused for
+    cash flows (kept in the signature for a stable strategy interface).
+    """
     return _strategy_lp(
         objective_prices=da_prices,
-        settlement_prices=id_prices,
+        settlement_prices=da_prices,
         spec=spec,
         name="da_lp",
     )
 
 
-def strategy_perfect_foresight(
+def strategy_alt_series_lp(
     da_prices: pd.Series, id_prices: pd.Series, spec: BatterySpec,
 ) -> DispatchResult:
-    """Theoretical ceiling: optimise against the *realised* intraday price.
-    Not deployable — but tells you how much revenue is *available* in the data."""
+    """
+    LP optimised AND settled on the alternative price series (``id_prices``).
+
+    In this repo's data that series is the BELGIAN day-ahead price (v1
+    mislabelled it as the German intraday continuous index and treated this
+    run as a "perfect foresight ceiling"). It is retained as a cross-zonal
+    reference: the same battery arbitraging a neighbouring zone's DA curve —
+    NOT a foresight ceiling for the German battery.
+    """
     return _strategy_lp(
         objective_prices=id_prices,
         settlement_prices=id_prices,
         spec=spec,
-        name="intraday_lp_perfect_foresight",
+        name="alt_series_lp",
     )
 
 
@@ -336,12 +368,16 @@ def strategy_da_plus_tilt(
     tilt_horizon_hours: int = 13,    # apply fe tilt over horizons 5–13 hours out
 ) -> DispatchResult:
     """
-    DA optimisation + Q1-style intraday tilt.
+    DA optimisation with a Q1-style forecast-error tilt, settled at DA.
 
-    For each hour t, when forecast_error_t is observed, the expected
-    intraday price at horizons t+5..t+13 is shifted by β·fe_t. The LP is
-    re-solved each day with these tilted DA prices (not against realised
-    intraday — that's the perfect-foresight version).
+    For each hour t the DA price at horizons t+5..t+13 is shifted by β·fe_t
+    before the daily LP is solved; cash flows still settle at the actual DA
+    price (the schedule is committed in the DA auction).
+
+    LOOK-AHEAD CAVEAT: fe is the REALISED forecast error, which is not
+    knowable at DA gate closure. The tilt therefore upper-bounds what a
+    real-time forecast-error signal could contribute to the DA schedule —
+    and empirically it contributes ~nothing (see Q3 results).
     """
     da_prices = da_prices.dropna()
     id_prices = id_prices.reindex(da_prices.index).interpolate()
@@ -355,7 +391,7 @@ def strategy_da_plus_tilt(
 
     return _strategy_lp(
         objective_prices=tilted_prices,
-        settlement_prices=id_prices,
+        settlement_prices=da_prices,
         spec=spec,
         name="da_plus_tilt",
     )
@@ -377,5 +413,5 @@ def run_all_strategies(
         "naive": strategy_naive(da_prices, id_prices, spec),
         "da_lp": strategy_da_only_lp(da_prices, id_prices, spec),
         "da_plus_tilt": strategy_da_plus_tilt(da_prices, id_prices, forecast_error, spec),
-        "perfect_foresight": strategy_perfect_foresight(da_prices, id_prices, spec),
+        "alt_series_lp": strategy_alt_series_lp(da_prices, id_prices, spec),
     }

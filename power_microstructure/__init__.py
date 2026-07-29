@@ -1,10 +1,14 @@
 """
-power_microstructure — German intraday power market microstructure research package.
+power_microstructure — European day-ahead market-coupling research package.
 
-Research questions:
-  Q1  Renewable forecast errors as intraday order flow (Granger causality, IRF, Bai-Perron)
-  Q2  Intraday spread structure: auction vs. continuous (cointegration, ECM, regime variance)
-  Q3  Shape spread: hourly vs. quarter-hourly products (time-to-delivery, forecast uncertainty)
+The package name predates the July 2026 revision: the SMARD price series v1
+believed to be German intraday indices are zonal DAY-AHEAD prices (DK1,
+Belgium, DE/LU neighbours) — see FINDINGS.md "Revision notes".
+
+Research questions (post-revision framing):
+  Q1  Renewable forecast errors and next-day auction prices (Granger, IRF, Bai-Perron)
+  Q2  Cross-zonal day-ahead spreads under market coupling (cointegration, ECM, regime variance)
+  Q3  "Shape spread" (cross-zonal hourly-vs-QH construction) and BESS dispatch LP
 """
 
 __version__ = "0.1.0"

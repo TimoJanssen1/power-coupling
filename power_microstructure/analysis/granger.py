@@ -1,5 +1,8 @@
 """
-Granger causality analysis: renewable forecast errors → intraday prices.
+Granger causality analysis: renewable forecast errors → power prices.
+
+(In this repo the price leg is the Belgian day-ahead series carried under the
+legacy column name "id_continuous" — see FINDINGS.md "Revision notes".)
 
 Methodology
 -----------
@@ -22,18 +25,16 @@ and Cross-spectral Methods." Econometrica 37(3): 424–438.
 
 from __future__ import annotations
 
+import logging
 import warnings
-from dataclasses import dataclass, field
-from typing import Sequence
+from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
-from scipy import stats
-from statsmodels.regression.linear_model import OLS
-from statsmodels.stats.stattools import durbin_watson
-from statsmodels.tools import add_constant
 from statsmodels.tsa.stattools import adfuller, grangercausalitytests
 from statsmodels.tsa.vector_ar.var_model import VAR
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -73,7 +74,7 @@ class GrangerAnalysis:
     forecast_error : pd.Series
         Hourly total renewable forecast error (MWh).
     price_series : pd.Series
-        Hourly intraday price or price change (EUR/MWh).
+        Hourly price or price change (EUR/MWh).
     max_lag : int
         Maximum lag order to consider in AIC selection. Default 24 (one day).
     n_bootstrap : int
@@ -94,7 +95,9 @@ class GrangerAnalysis:
         self.n_bootstrap = n_bootstrap
         self.alpha = alpha
 
-        aligned = pd.concat([forecast_error.rename("fe"), price_series.rename("price")], axis=1).dropna()
+        aligned = pd.concat(
+            [forecast_error.rename("fe"), price_series.rename("price")], axis=1
+        ).dropna()
         self.fe = aligned["fe"]
         self.price = aligned["price"]
         self.n_obs = len(aligned)
@@ -110,7 +113,9 @@ class GrangerAnalysis:
         name = name or series.name or "series"
         if name in self._stationarity_cache:
             return self._stationarity_cache[name]
-        adf_stat, p_val, lags_used, n_obs, critical_vals, _ = adfuller(series.dropna(), autolag="AIC")
+        adf_stat, p_val, lags_used, n_obs, critical_vals, _ = adfuller(
+            series.dropna(), autolag="AIC"
+        )
         result = {
             "name": name,
             "adf_stat": adf_stat,
@@ -181,7 +186,9 @@ class GrangerAnalysis:
 
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            gc_results = grangercausalitytests(data[["price", "fe"]], maxlag=optimal_lag, verbose=False)
+            gc_results = grangercausalitytests(
+                data[["price", "fe"]], maxlag=optimal_lag, verbose=False
+            )
 
         # Extract F-stat from the optimal lag result
         f_stat, p_val, df_denom, df_num = gc_results[optimal_lag][0]["ssr_ftest"]
@@ -207,7 +214,9 @@ class GrangerAnalysis:
         data = pd.concat([fe.rename("fe"), price.rename("price")], axis=1).dropna()
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            gc_results = grangercausalitytests(data[["fe", "price"]], maxlag=optimal_lag, verbose=False)
+            gc_results = grangercausalitytests(
+                data[["fe", "price"]], maxlag=optimal_lag, verbose=False
+            )
 
         f_stat, p_val, _, _ = gc_results[optimal_lag][0]["ssr_ftest"]
         p_bonferroni = min(p_val * n_tests, 1.0)
@@ -228,18 +237,25 @@ class GrangerAnalysis:
     # Impulse Response Functions
     # ------------------------------------------------------------------
 
-    def irf(self, horizon: int = 24, n_periods_seed: int = 500) -> IRFResult:
+    def irf(self, horizon: int = 24, seed: int = 42) -> IRFResult:
         """
         Compute IRF: response of price to a one-standard-deviation shock in forecast_error.
 
-        Bootstrap confidence bands (percentile method, 5th/95th).
+        Confidence bands come from a residual bootstrap (percentile method,
+        5th/95th): estimated residuals are resampled i.i.d. with replacement,
+        a synthetic sample of the SAME length as the data is rebuilt through
+        the fitted VAR recursion (initialised with the actual first p
+        observations), the VAR is re-estimated on it, and the orthogonalised
+        IRF recomputed. Replications that fail to re-estimate are dropped and
+        counted; if more than 5% fail, a RuntimeError is raised (no silent
+        fallback to the point estimate).
 
         Parameters
         ----------
         horizon : int
             Number of periods (hours) ahead to trace the impulse response.
-        n_periods_seed : int
-            Length of VAR simulation for each bootstrap draw.
+        seed : int
+            Seed for the bootstrap resampling RNG.
         """
         fe, price, _ = self.prepare_stationary()
         optimal_lag, _ = self.aic_lag_selection(fe, price)
@@ -275,26 +291,55 @@ class GrangerAnalysis:
             index=range(price_decomp.shape[0]),
         )
 
-        # Bootstrap
-        rng = np.random.default_rng(42)
-        boot_irfs = np.zeros((self.n_bootstrap, horizon + 1))
-        residuals = var_result.resid
+        # Residual bootstrap at the actual sample length.
+        rng = np.random.default_rng(seed)
+        T, k = data.shape
+        p = optimal_lag
+        residuals = var_result.resid - var_result.resid.mean(axis=0)  # centre
+        n_resid = len(residuals)                                      # = T - p
+        coefs = var_result.coefs                                      # (p, k, k)
+        intercept = var_result.params[0]                              # (k,)
 
-        for b in range(self.n_bootstrap):
-            boot_resid = residuals[rng.integers(0, len(residuals), size=n_periods_seed)]
+        # Simulate all replications jointly: Y has shape (B, T, k). The first p
+        # observations are the actual data (common starting condition); the
+        # recursion then applies the fitted VAR with resampled residuals.
+        B = self.n_bootstrap
+        Y = np.empty((B, T, k))
+        Y[:, :p, :] = data[:p]
+        draw = rng.integers(0, n_resid, size=(B, T - p))
+        E = residuals[draw]  # (B, T-p, k)
+        for t in range(p, T):
+            acc = intercept + E[:, t - p, :]
+            for i in range(1, p + 1):
+                acc = acc + Y[:, t - i, :] @ coefs[i - 1].T
+            Y[:, t, :] = acc
+
+        boot_irfs = np.full((B, horizon + 1), np.nan)
+        n_failed = 0
+        for b in range(B):
             try:
-                sim = var_result.simulate_var(steps=n_periods_seed, seed=rng.integers(1e6))
-                boot_var = VAR(sim).fit(optimal_lag, trend="c")
-                boot_irf = boot_var.irf(horizon)
-                boot_irfs[b] = boot_irf.orth_irfs[:, 1, 0]
-            except Exception:
-                boot_irfs[b] = irf_point  # fallback to point estimate
+                boot_var = VAR(Y[b]).fit(p, trend="c")
+                boot_irfs[b] = boot_var.irf(horizon).orth_irfs[:, 1, 0]
+            except Exception as exc:
+                n_failed += 1
+                logger.warning("IRF bootstrap replication %d failed: %s", b, exc)
+
+        if n_failed > 0.05 * B:
+            raise RuntimeError(
+                f"IRF residual bootstrap: {n_failed}/{B} replications failed to "
+                "re-estimate — confidence bands would be unreliable."
+            )
+        if n_failed:
+            logger.warning(
+                "IRF bootstrap: %d/%d replications failed and were dropped from the bands.",
+                n_failed, B,
+            )
 
         return IRFResult(
             periods=np.arange(horizon + 1),
             irf=irf_point,
-            irf_lower=np.percentile(boot_irfs, 5, axis=0),
-            irf_upper=np.percentile(boot_irfs, 95, axis=0),
+            irf_lower=np.nanpercentile(boot_irfs, 5, axis=0),
+            irf_upper=np.nanpercentile(boot_irfs, 95, axis=0),
             cause="forecast_error",
             effect="price",
             variance_decomposition=vd_df,
@@ -313,7 +358,7 @@ class GrangerAnalysis:
         Rolling Granger p-value over time.
 
         Used to assess whether the forecast_error → price relationship has
-        strengthened as German renewable penetration increased 2018–2024.
+        strengthened as German renewable penetration increased over the sample.
         Low p-values over time → relationship is structural, not spurious.
         """
         fe, price, _ = self.prepare_stationary()
@@ -327,7 +372,9 @@ class GrangerAnalysis:
                 lag = min(self.max_lag, len(window_data) // 10)
                 with warnings.catch_warnings():
                     warnings.simplefilter("ignore")
-                    gc = grangercausalitytests(window_data[["price", "fe"]], maxlag=lag, verbose=False)
+                    gc = grangercausalitytests(
+                        window_data[["price", "fe"]], maxlag=lag, verbose=False
+                    )
                 p_values.append(gc[lag][0]["ssr_ftest"][1])
             except Exception:
                 p_values.append(float("nan"))
@@ -360,7 +407,9 @@ class GrangerAnalysis:
         rows = []
         for label, price_s in price_by_period.items():
             try:
-                analyzer = GrangerAnalysis(self.fe, price_s, self.max_lag, self.n_bootstrap, self.alpha)
+                analyzer = GrangerAnalysis(
+                    self.fe, price_s, self.max_lag, self.n_bootstrap, self.alpha
+                )
                 result = analyzer.test(n_tests=n)
                 rows.append({
                     "period": label,

@@ -2,7 +2,7 @@
 Structural break detection via the Bai-Perron (1998, 2003) sequential procedure.
 
 This module tests whether the Granger-causal relationship between renewable
-forecast errors and intraday prices has strengthened as German renewable
+forecast errors and power prices has strengthened as German renewable
 penetration has grown (hypothesis: break dates should align with capacity additions).
 
 Methodology
@@ -32,13 +32,11 @@ Bai, J. & Perron, P. (2003). "Computation and Analysis of Multiple Structural
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
 from scipy import stats
-from statsmodels.regression.linear_model import OLS
-from statsmodels.tools import add_constant
 
 
 class _PrefixOLS:
@@ -238,20 +236,31 @@ class StructuralBreakAnalysis:
     def _supF_test(self, m: int) -> tuple[float, float]:
         """
         Compute supF(m) = sup over all valid partition points of the F-statistic
-        testing m breaks against 0 breaks.
+        testing m breaks against m-1 breaks.
 
-        Approximate p-values use the Bai-Perron (1998) asymptotic distribution.
+        Each additional break frees TWO parameters (the segment intercept alpha
+        AND the slope beta both shift), so q = 2 restrictions per break.
+
+        P-VALUE CAVEAT: the p-value below evaluates the sup-statistic against a
+        pointwise F(2, .) reference distribution. The supremum of thousands of
+        correlated F-statistics is NOT F-distributed — its true critical values
+        (Bai & Perron 1998, Table 1) are substantially larger, so this p-value
+        is ANTI-conservative: it overstates significance. It is used here only
+        to order candidate break counts in the sequential procedure; calibrated
+        inference would require the Bai-Perron asymptotic critical values,
+        which are not implemented.
         """
         rss_null = self._rss_segment(0, self.T - 1)
         min_seg = self._min_seg
+        q = 2  # restrictions per added break: intercept and slope both shift
 
         # For m=1: scan all valid single break points
         if m == 1:
             f_stats = []
             for bp in range(min_seg, self.T - min_seg):
                 rss_alt = self._rss_segment(0, bp) + self._rss_segment(bp + 1, self.T - 1)
-                # F-stat: (RSS_null - RSS_alt) / (q * sigma^2_alt) * (T - (m+1)*q)
-                f_stat = (rss_null - rss_alt) / (rss_alt / (self.T - 2 * 2))
+                # F = [(RSS_null − RSS_alt)/q] / [RSS_alt/(T − 2·2)]
+                f_stat = ((rss_null - rss_alt) / q) / (rss_alt / (self.T - 2 * 2))
                 f_stats.append(max(f_stat, 0))
             supF = float(max(f_stats)) if f_stats else 0.0
         else:
@@ -266,13 +275,13 @@ class StructuralBreakAnalysis:
                 for bp in range(start + min_seg, end - min_seg):
                     rss_alt = self._rss_segment(start, bp) + self._rss_segment(bp + 1, end)
                     n_seg = end - start + 1
-                    f = (rss_seg - rss_alt) / (rss_alt / max(n_seg - 4, 1))
+                    f = ((rss_seg - rss_alt) / q) / (rss_alt / max(n_seg - 4, 1))
                     candidate_f.append(max(f, 0))
             supF = float(max(candidate_f)) if candidate_f else 0.0
 
-        # Approximate p-value: use F(q, T-2*(m+1)) critical values
-        # q=1 (one regressor), conservative approximation
-        df1 = 1
+        # Heuristic p-value against a pointwise F(q, df2) reference — see the
+        # docstring caveat: this OVERSTATES significance for a sup-statistic.
+        df1 = q
         df2 = max(self.T - 2 * (m + 1), 1)
         pval = float(1 - stats.f.cdf(supF, df1, df2))
         return supF, pval
@@ -345,7 +354,11 @@ class StructuralBreakAnalysis:
         candidates = list(range(min_seg, self.T - min_seg, max(1, self.T // 200)))
 
         if m == 1:
-            best_idx = min(candidates, key=lambda bp: self._rss_segment(0, bp) + self._rss_segment(bp + 1, self.T - 1))
+            best_idx = min(
+                candidates,
+                key=lambda bp: self._rss_segment(0, bp)
+                + self._rss_segment(bp + 1, self.T - 1),
+            )
             return [best_idx]
 
         # Greedy: find each break in the largest remaining segment
@@ -360,7 +373,11 @@ class StructuralBreakAnalysis:
                     continue
                 rss_full = self._rss_segment(start, end)
                 for bp in range(start + min_seg, end - min_seg):
-                    reduction = rss_full - self._rss_segment(start, bp) - self._rss_segment(bp + 1, end)
+                    reduction = (
+                        rss_full
+                        - self._rss_segment(start, bp)
+                        - self._rss_segment(bp + 1, end)
+                    )
                     if reduction > best_rss_reduction:
                         best_rss_reduction = reduction
                         best_bp = bp

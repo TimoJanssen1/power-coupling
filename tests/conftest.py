@@ -74,7 +74,7 @@ def qh_index():
 
 @pytest.fixture
 def qh_prices(qh_index, rng):
-    """Synthetic quarter-hourly intraday prices."""
+    """Synthetic quarter-hourly prices."""
     n = len(qh_index)
     return pd.Series(50 + rng.normal(0, 3, size=n), index=qh_index, name="id_continuous_qh")
 

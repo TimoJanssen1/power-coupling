@@ -6,7 +6,8 @@ Forecast error = actual − forecast (signed, MWh).
   Positive error → more wind/solar than expected → bearish price pressure
   Negative error → less wind/solar than expected → bullish price pressure
 
-The signal is the primary driver of intraday order flow (Q1 hypothesis).
+Q1's driver variable. (v1 framed it as intraday order flow; post-revision it
+is related to next-day zonal day-ahead prices — see FINDINGS.md.)
 
 Key outputs
 -----------
@@ -51,8 +52,10 @@ class ForecastErrorSignal:
         df["abs_total_error"] = df["total_error"].abs()
         df["error_direction"] = np.sign(df["total_error"])
         # Separate surprise magnitude by type
-        df["wind_pct_surprise"] = df["wind_error"] / (df["wind_error"].abs().rolling(self.window, min_periods=168).mean() + 1e-6)
-        df["solar_pct_surprise"] = df["solar_error"] / (df["solar_error"].abs().rolling(self.window, min_periods=168).mean() + 1e-6)
+        wind_scale = df["wind_error"].abs().rolling(self.window, min_periods=168).mean()
+        df["wind_pct_surprise"] = df["wind_error"] / (wind_scale + 1e-6)
+        solar_scale = df["solar_error"].abs().rolling(self.window, min_periods=168).mean()
+        df["solar_pct_surprise"] = df["solar_error"] / (solar_scale + 1e-6)
         return df
 
     def standardised(self) -> pd.DataFrame:
@@ -68,8 +71,8 @@ class ForecastErrorSignal:
         """
         Intraday cumulative error, reset at midnight.
 
-        Captures the net imbalance signal that has accumulated within the delivery
-        day — this is the within-day version of signed order flow.
+        Captures the net imbalance signal that has accumulated within the
+        delivery day.
         """
         df = self.errors.copy()
         df["date"] = df.index.normalize()
@@ -79,7 +82,7 @@ class ForecastErrorSignal:
         """
         Rolling forecast uncertainty: variance of total_error over the window.
 
-        High uncertainty periods are expected to drive wider auction/continuous spreads.
+        High uncertainty periods are expected to drive wider cross-zonal spreads.
         Used as a conditioning variable in Q2 spread regressions.
         """
         return (
@@ -109,7 +112,9 @@ class ForecastErrorSignal:
         """Average absolute error by hour of day — shows intraday structure."""
         df = self.errors.copy()
         df["hour"] = df.index.hour
-        return df.groupby("hour")[["wind_error", "solar_error", "total_error"]].agg(["mean", "std", "count"])
+        return df.groupby("hour")[["wind_error", "solar_error", "total_error"]].agg(
+            ["mean", "std", "count"]
+        )
 
     def renewable_penetration_quartile(self, renewable_share: pd.Series) -> pd.Series:
         """

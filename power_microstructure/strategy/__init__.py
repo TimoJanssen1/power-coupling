@@ -1,12 +1,12 @@
-from .backtest import WalkForwardBacktest, BacktestResult
+from .backtest import BacktestResult, WalkForwardBacktest
 from .battery import (
     BatterySpec,
     DispatchResult,
     run_all_strategies,
+    strategy_alt_series_lp,
     strategy_da_only_lp,
     strategy_da_plus_tilt,
     strategy_naive,
-    strategy_perfect_foresight,
 )
 
 __all__ = [
@@ -18,5 +18,5 @@ __all__ = [
     "strategy_naive",
     "strategy_da_only_lp",
     "strategy_da_plus_tilt",
-    "strategy_perfect_foresight",
+    "strategy_alt_series_lp",
 ]

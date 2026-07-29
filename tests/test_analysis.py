@@ -7,8 +7,8 @@ import pandas as pd
 import pytest
 
 from power_microstructure.analysis import (
-    GrangerAnalysis,
     CointegrationAnalysis,
+    GrangerAnalysis,
     StructuralBreakAnalysis,
 )
 
@@ -104,7 +104,10 @@ class TestGrangerAnalysis:
             max_lag=4,
             n_bootstrap=10,
         )
-        prices = {"h10": granger_price_series.iloc[:1000], "h11": granger_price_series.iloc[1000:2000]}
+        prices = {
+            "h10": granger_price_series.iloc[:1000],
+            "h11": granger_price_series.iloc[1000:2000],
+        }
         df = ga.test_multiple_periods(prices)
         assert isinstance(df, pd.DataFrame)
         assert "period" in df.columns

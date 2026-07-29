@@ -29,7 +29,9 @@ class TestForecastErrorSignal:
         cum = sig.cumulative()
         # First observation of each day should equal that hour's error
         daily_firsts = cum.groupby(cum.index.normalize()).first()
-        daily_errors = forecast_errors["total_error"].groupby(forecast_errors.index.normalize()).first()
+        daily_errors = (
+            forecast_errors["total_error"].groupby(forecast_errors.index.normalize()).first()
+        )
         common = daily_firsts.index.intersection(daily_errors.index)
         pd.testing.assert_series_equal(
             daily_firsts.loc[common].reset_index(drop=True),

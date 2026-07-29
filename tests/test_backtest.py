@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from power_microstructure.strategy import WalkForwardBacktest, BacktestResult
+from power_microstructure.strategy import BacktestResult, WalkForwardBacktest
 
 
 @pytest.fixture
@@ -24,7 +24,9 @@ def stationary_spread(hourly_index, rng):
 @pytest.fixture
 def random_walk_spread(hourly_index, rng):
     """Non-mean-reverting (random walk) spread — should not show consistent profit."""
-    return pd.Series(np.cumsum(rng.normal(0, 1, size=len(hourly_index))), index=hourly_index, name="spread")
+    return pd.Series(
+        np.cumsum(rng.normal(0, 1, size=len(hourly_index))), index=hourly_index, name="spread"
+    )
 
 
 class TestWalkForwardBacktest:
@@ -53,7 +55,10 @@ class TestWalkForwardBacktest:
         bt = WalkForwardBacktest(stationary_spread, train_months=6, test_months=3, n_bootstrap=100)
         result = bt.run(entry_z=1.5, exit_z=0.3)
         if result.n_trades > 0:
-            required = {"entry_time", "exit_time", "direction", "entry_price", "exit_price", "pnl", "hold_hours"}
+            required = {
+                "entry_time", "exit_time", "direction", "entry_price",
+                "exit_price", "pnl", "hold_hours",
+            }
             assert required.issubset(set(result.trades.columns))
 
     def test_direction_values_are_plus_minus_one(self, stationary_spread):

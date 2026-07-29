@@ -1,5 +1,12 @@
 """
-Walk-forward backtest for intraday spread strategies.
+Walk-forward backtest engine for spread mean-reversion strategies (hourly marks).
+
+NOTE (July 2026): this engine enters/exits at hourly observations of the
+spread. With this repo's data the spread legs are zonal DAY-AHEAD prices,
+fixed once per delivery day, so hourly marking is fictitious — its only
+in-repo consumer is the deprecated ``scripts/run_q2_backtest.py`` (see
+``results/deprecated_q2_backtest_hourly_marks/DEPRECATED.md``). The honest
+Q2 backtest lives in ``scripts/run_q2_honest_backtest.py``.
 
 Design principles
 -----------------
@@ -33,11 +40,9 @@ Usage
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Literal
 
 import numpy as np
 import pandas as pd
-
 
 # EPEX exchange fee EUR/MWh (midpoint of 0.02–0.04 range per EPEX public tariff sheet)
 _EXCHANGE_FEE = 0.03
@@ -375,6 +380,11 @@ class WalkForwardBacktest:
         annualises by √252. Naïvely annualising hourly PnL by √8760 inflates
         the Sharpe by ≈√(8760/252) ≈ 6× because most hours have zero PnL
         (the strategy is in-market a few hours per week, not continuously).
+
+        CONVENTION NOTE: √252 is the equity-trading-days convention. Power
+        markets clear every calendar day, so √365 would also be defensible
+        and is ≈20% larger; the repo standardises on √252 everywhere and
+        flags the choice here rather than mixing conventions.
         """
         if isinstance(pnl.index, pd.DatetimeIndex):
             daily = pnl.resample("1D").sum()

@@ -1,15 +1,24 @@
 """
 Spread construction and decomposition.
 
-Three spreads — one per research question:
+NOTE ON SERIES IDENTITY (July 2026 revision): the SMARD price panel this module
+consumes carries LEGACY column names from v1's misidentification of the SMARD
+filter codes. What the spreads actually are:
 
-  Q2  Auction/continuous spread  = ID auction price − intraday continuous VWAP
-      (for the same delivery hour/period)
-  Q3  Shape spread               = hourly block price − mean of four QH prices
-      (within the same delivery hour)
+  "da_id_spread"  = DE/LU day-ahead − Belgian day-ahead      (cross-zonal DA spread)
+  "id3_spread"    = Danish DK1 day-ahead − Belgian day-ahead (cross-zonal DA spread)
+  "id1_spread"    = all-NaN (SMARD filter 251 does not exist)
+  "shape_spread"  = Belgian DA (hourly) − hourly mean of the "Anrainer DE/LU"
+                    quarter-hourly series. Before the 15-min MTU go-live
+                    (Oct 2025) the QH leg is an hourly price replicated 4×, so
+                    the "shape" component is zero and the spread is purely
+                    cross-zonal.
 
-Negative prices are preserved — they are a structural feature of the German market
-during high-renewable/low-demand periods and must not be winsorized away.
+None of these is an auction-vs-continuous or hourly-vs-QH microstructure spread;
+see FINDINGS.md "Revision notes" for how this changes the interpretation.
+
+Negative prices are preserved — they are a structural feature of European power
+markets during high-renewable/low-demand periods and must not be winsorized away.
 """
 
 from __future__ import annotations
@@ -20,7 +29,7 @@ import pandas as pd
 
 class SpreadConstructor:
     """
-    Builds and decomposes intraday spread series.
+    Builds and decomposes cross-zonal price spread series.
 
     Parameters
     ----------
@@ -28,7 +37,8 @@ class SpreadConstructor:
         Must contain columns: da_price, id1_price, id3_price, id_continuous.
         UTC-aware DatetimeIndex, hourly frequency.
     qh_prices : pd.Series, optional
-        Quarter-hourly intraday continuous prices for shape spread (Q3).
+        Quarter-hourly price series for the shape spread (Q3) — in this repo
+        the "Anrainer DE/LU" day-ahead series (legacy name id_continuous_qh).
         UTC-aware DatetimeIndex, 15-min frequency.
     """
 
@@ -38,33 +48,34 @@ class SpreadConstructor:
         self.qh_prices = qh_prices.copy() if qh_prices is not None else None
 
     # ------------------------------------------------------------------
-    # Q2 — Auction/continuous spread
+    # Q2 — Cross-zonal DA spreads (legacy "auction/continuous" names)
     # ------------------------------------------------------------------
 
     def id1_spread(self) -> pd.Series:
         """
-        ID1 auction price minus intraday continuous VWAP for the same delivery hour.
+        All-NaN by construction: the "id1_price" column is empty over the whole
+        sample because SMARD filter 251 does not exist (the fetcher's weekly
+        requests all 404). Kept only so the spread-panel schema is stable.
 
-        ID1 clears at 15:00 CET for next-day delivery, so the spread is observable
-        from ~15:00 onwards when both series are available.
-
-        Positive spread  → auction cleared higher than post-auction continuous.
-        Negative spread  → market sold off after auction (unexpected renewable surplus).
+        (Historical note: the real EPEX ID1 is a volume-weighted index of
+        continuous trades in the last hour before delivery — an ex-post
+        statistic, not an auction price, and not available from SMARD.)
         """
         spread = self.panel["id1_price"] - self.panel["id_continuous"]
         return spread.rename("id1_spread")
 
     def id3_spread(self) -> pd.Series:
         """
-        ID3 auction price minus intraday continuous VWAP for the same delivery hour.
-
-        ID3 clears at 22:00 CET, so it captures overnight information.
+        Danish DK1 day-ahead price minus Belgian day-ahead price for the same
+        delivery hour (legacy name "id3_spread"). A cross-zonal spread between
+        two zones coupled to DE/LU in the single day-ahead auction — both legs
+        clear simultaneously at ~12:00 D-1.
         """
         spread = self.panel["id3_price"] - self.panel["id_continuous"]
         return spread.rename("id3_spread")
 
     def da_id_spread(self) -> pd.Series:
-        """Day-ahead price minus intraday continuous VWAP."""
+        """DE/LU day-ahead price minus Belgian day-ahead price (cross-zonal spread)."""
         spread = self.panel["da_price"] - self.panel["id_continuous"]
         return spread.rename("da_id_spread")
 
@@ -82,11 +93,13 @@ class SpreadConstructor:
 
     def shape_spread(self) -> pd.Series:
         """
-        Shape spread = hourly block price − mean(4 × 15-min prices within that hour).
+        "Shape spread" = hourly price − mean(4 × 15-min prices within that hour).
 
-        A positive shape spread means the hourly block traded richer than the QH sum —
-        market participants are paying a premium for the simplicity of an hourly block
-        or for insurance against intra-hour renewable variability.
+        With this repo's data the hourly leg is the Belgian DA price and the QH
+        leg is SMARD's "Anrainer DE/LU" neighbouring-zone series, so this is a
+        cross-zonal spread, not an hourly-vs-QH product spread. Before Oct 2025
+        the QH leg carries no intra-hour variation at all (hourly values
+        replicated 4×). See FINDINGS.md "Revision notes".
 
         Requires qh_prices to be provided at construction.
         """
@@ -108,14 +121,15 @@ class SpreadConstructor:
         ss = self.shape_spread()
         df = ss.to_frame()
         df["hour"] = df.index.hour
-        return df.groupby("hour")["shape_spread"].agg(["mean", "std", "count", _median])
+        return df.groupby("hour")["shape_spread"].agg(["mean", "std", "count", "median"])
 
     def qh_intra_hour_std(self) -> pd.Series:
         """
-        Intra-hour standard deviation of QH prices.
+        Intra-hour standard deviation of the QH price series.
 
-        This is the realized within-hour price volatility — the direct measure of
-        intra-hour renewable variability that the shape spread is supposed to price.
+        CAVEAT: with this repo's data the QH series is hourly-replicated before
+        the 15-minute MTU go-live (Oct 2025), so this statistic is identically
+        zero for ~91% of the sample and only becomes informative afterwards.
         """
         if self.qh_prices is None:
             raise ValueError("qh_prices must be provided.")
@@ -168,7 +182,7 @@ class SpreadConstructor:
         """
         Binary flag: 1 when any auction price is negative.
 
-        Germany has frequent negative intraday prices during high renewable / low demand.
+        European day-ahead auctions clear negative during high renewable / low demand.
         These are NOT outliers — they are structural. Flag them for conditional analysis.
         """
         neg = (
@@ -206,7 +220,3 @@ class SpreadConstructor:
         missing = required - set(df.columns)
         if missing:
             raise ValueError(f"Missing required columns: {missing}")
-
-
-def _median(x: pd.Series) -> float:
-    return float(x.median())

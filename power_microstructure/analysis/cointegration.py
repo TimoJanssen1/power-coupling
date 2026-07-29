@@ -1,5 +1,8 @@
 """
-Cointegration and error correction analysis for intraday spread pairs.
+Cointegration and error correction analysis for power price spread pairs.
+
+(In this repo the pairs are zonal DAY-AHEAD price legs — DE/LU, DK1, Belgium —
+carried under legacy "auction"/"continuous" names; see FINDINGS.md.)
 
 Methodology
 -----------
@@ -39,8 +42,8 @@ from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
-from statsmodels.tsa.stattools import adfuller, kpss, coint
-from statsmodels.tsa.vector_ar.vecm import coint_johansen, VECM
+from statsmodels.tsa.stattools import adfuller, coint, kpss
+from statsmodels.tsa.vector_ar.vecm import VECM, coint_johansen
 
 
 @dataclass
@@ -82,13 +85,13 @@ class VECMResult:
 
 class CointegrationAnalysis:
     """
-    Full cointegration workflow for an intraday spread pair.
+    Full cointegration workflow for a price spread pair.
 
     Parameters
     ----------
     series1, series2 : pd.Series
-        The two price series to test for cointegration (e.g. ID1 auction and
-        intraday continuous prices for the same delivery hour).
+        The two price series to test for cointegration (e.g. two coupled
+        zones' day-ahead prices for the same delivery hour).
         Must be UTC-aware DatetimeIndex, hourly frequency.
     alpha : float
         Significance level. Default 0.05.
@@ -173,13 +176,24 @@ class CointegrationAnalysis:
         Parameters
         ----------
         det_order : int
-            -1 = no constant, 0 = restricted constant, 1 = unrestricted constant.
+            Deterministic-term specification, statsmodels semantics:
+            -1 = no deterministic terms, 0 = constant term, 1 = constant + linear trend.
         k_ar_diff : int
             Number of lagged difference terms in the VAR.
+
+        Interpretation note
+        -------------------
+        In an n-variable system, cointegration corresponds to rank r with
+        0 < r < n. If the estimated rank equals n (here: rank 2 in a bivariate
+        system), the matrix Pi is full rank and the levels VAR is stationary —
+        i.e. BOTH series are I(0) and "cointegration" is not the right
+        description; there is no unit root to share.
         """
         result = coint_johansen(self._data, det_order=det_order, k_ar_diff=k_ar_diff)
 
-        # Count cointegrating vectors at 95% critical value
+        # Count cointegrating relations at the 95% critical value. NOTE:
+        # n_cointegrating_vectors == n_vars means joint stationarity of the
+        # levels system, NOT cointegration (see docstring).
         trace_stats = result.lr1
         trace_crit = result.cvt[:, 1]  # 95% column
         n_coint = int(np.sum(trace_stats > trace_crit))
@@ -207,9 +221,11 @@ class CointegrationAnalysis:
         """
         Estimate Vector Error Correction Model.
 
-        The alpha (adjustment speed) coefficients tell you:
-        - How fast does ID1 auction price correct toward continuous?
-        - How fast does continuous correct toward ID1 auction?
+        The alpha (adjustment speed) coefficients tell you how fast each leg
+        of the pair corrects toward the long-run relation after a shock —
+        with this repo's data, which zonal day-ahead price does more of the
+        closing when a cross-zonal spread opens (a descriptive statement, not
+        venue price discovery; see FINDINGS.md "Revision notes").
 
         A larger |alpha| = faster mean-reversion.
         """
@@ -260,8 +276,8 @@ class CointegrationAnalysis:
         If beta is None, it is estimated from OLS (s1 ~ s2).
         """
         if beta is None:
-            from statsmodels.tools import add_constant as sm_add_const
             from statsmodels.regression.linear_model import OLS
+            from statsmodels.tools import add_constant as sm_add_const
             X = sm_add_const(self.s2.values)
             fit = OLS(self.s1.values, X).fit()
             beta = float(fit.params[1])
@@ -281,8 +297,8 @@ class CointegrationAnalysis:
         Model: ΔS_t = γ·S_{t-1} + ε_t,  HL = −ln(2)/ln(1+γ)
         """
         if beta is None:
-            from statsmodels.tools import add_constant as sm_add_const
             from statsmodels.regression.linear_model import OLS
+            from statsmodels.tools import add_constant as sm_add_const
             X = sm_add_const(self.s2.values)
             fit = OLS(self.s1.values, X).fit()
             beta = float(fit.params[1])
