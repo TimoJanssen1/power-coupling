@@ -24,7 +24,6 @@ dist/
 .ipynb_checkpoints/
 
 # Data cache (parquet files are large and reproducible from API)
-~/.cache/power_microstructure/
 *.parquet
 
 # Editor / OS

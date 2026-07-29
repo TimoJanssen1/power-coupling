@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "power-microstructure"
 version = "0.1.0"
-description = "German intraday power market microstructure and spread dynamics research"
+description = "Cross-zonal day-ahead power price econometrics on free public data"
 requires-python = ">=3.11"
 dependencies = [
     "entsoe-py>=0.6.9",
@@ -16,8 +16,6 @@ dependencies = [
     "requests>=2.31",
     "pyarrow>=16",          # parquet caching
     "matplotlib>=3.9",
-    "seaborn>=0.13",
-    "tqdm>=4.66",
 ]
 
 [project.optional-dependencies]
@@ -40,6 +38,8 @@ addopts = "-v --tb=short"
 
 [tool.ruff]
 line-length = 100
+
+[tool.ruff.lint]
 select = ["E", "F", "W", "I"]
 
 [tool.black]

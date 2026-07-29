@@ -6,11 +6,14 @@ Runs after scripts/fetch_full_history.py has populated the cache. Saves:
     results/tables/*.csv        all numeric outputs (descriptive stats, test
                                  results, segment estimates, …)
     results/figures/*.png       all plots referenced in the notebooks
-    results/summary.md          one-paragraph headlines per question
+    results/summary.json        consolidated numeric summary
 
 Usage
 -----
-    .venv/bin/python scripts/run_full_analysis.py
+    .venv/bin/python scripts/run_full_analysis.py [--end YYYY-MM-DD | --end live]
+
+The sample end date is pinned to 2026-05-04 (the shipped-artifact window) so
+results regenerate from cache; pass --end live for a fresh window.
 
 Re-running is cheap because every fetcher has parquet caching and every
 expensive analysis here is wrapped in its own function so you can comment
@@ -20,7 +23,6 @@ out a section and iterate.
 from __future__ import annotations
 
 import json
-import os
 import sys
 import warnings
 from pathlib import Path
@@ -30,13 +32,13 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-os.environ.setdefault("ENTSOE_API_KEY", os.environ.get("ENTOSE_API_KEY", ""))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from power_microstructure.analysis.cointegration import CointegrationAnalysis  # noqa: E402
 from power_microstructure.analysis.granger import GrangerAnalysis  # noqa: E402
 from power_microstructure.analysis.structural import StructuralBreakAnalysis  # noqa: E402
 from power_microstructure.data import EntsoeFetcher, SmardFetcher  # noqa: E402
+from power_microstructure.runconfig import resolve_end_date  # noqa: E402
 from power_microstructure.signals.forecast_error import ForecastErrorSignal  # noqa: E402
 from power_microstructure.signals.spread import SpreadConstructor  # noqa: E402
 
@@ -60,7 +62,7 @@ FIGURES.mkdir(parents=True, exist_ok=True)
 TABLES.mkdir(parents=True, exist_ok=True)
 
 START = "2018-10-01"
-END = (pd.Timestamp.now(tz="Europe/Berlin").normalize() - pd.Timedelta(days=3)).strftime("%Y-%m-%d")
+END = resolve_end_date()  # pinned to 2026-05-04 unless --end/PM_END says otherwise
 SUMMARY: dict[str, dict] = {"window": {"start": START, "end": END}}
 
 
@@ -92,8 +94,6 @@ def load_data():
     errors = ef.forecast_error(start=START, end=END)
     rshare = ef.renewable_share(start=START, end=END)
     da = ef.day_ahead_prices(start=START, end=END)
-    if isinstance(da, pd.DataFrame):
-        da = da.iloc[:, 0]
     panel = sf.price_panel(start=START, end=END)
     qh = sf.intraday_continuous_index_qh(start=START, end=END)
     # Normalise tz to UTC
@@ -110,15 +110,20 @@ def load_data():
 
 
 # ============================================================================
-# Q1 — Forecast errors as intraday order flow
+# Q1 — Forecast errors and the price series (BE day-ahead, legacy 'intraday')
 # ============================================================================
 
 
 def run_q1(errors: pd.DataFrame, panel: pd.DataFrame, rshare: pd.Series):
-    print("\n" + "=" * 70 + "\nQ1 — Forecast errors as intraday order flow\n" + "=" * 70)
+    print("\n" + "=" * 70 + "\nQ1 — Forecast errors and prices\n" + "=" * 70)
 
-    # Use SMARD intraday continuous index — that's where forecast errors clear,
-    # not the day-ahead auction (which is fixed before the error realises).
+    # Price series: the panel's "id_continuous" column. SERIES NOTE (July 2026):
+    # this is the BELGIAN day-ahead price (SMARD filter 4996), not a German
+    # intraday index as v1 believed. A day-ahead price is fixed at ~12:00 D-1,
+    # BEFORE the delivery-hour forecast error realises, so any fe → price
+    # predictability here runs through error persistence into later auctions
+    # (plus common drivers) — not through intraday clearing of imbalances.
+    # See FINDINGS.md "Revision notes".
     price = panel["id_continuous"].dropna()
     fe = errors["total_error"]
 
@@ -184,11 +189,11 @@ def run_q1(errors: pd.DataFrame, panel: pd.DataFrame, rshare: pd.Series):
     }
 
     # ---- 1.3 IRF -----------------------------------------------------------------
-    print("  computing IRF (24h horizon, 200 bootstrap reps) …")
-    irf = g.irf(horizon=24, n_periods_seed=2000)
-    # Single-panel IRF with bootstrap CI — the FEVD result (FE explains <5% of
-    # price variance at all horizons) is captured numerically in q1_irf_path.csv
-    # and called out in text; visualising it as a stacked area at [0, 1] makes
+    print("  computing IRF (24h horizon, 200 residual-bootstrap reps at full sample length) …")
+    irf = g.irf(horizon=24)
+    # Single-panel IRF with bootstrap CI. The FEVD (share of price variance
+    # attributable to fe shocks per horizon) is exported separately to
+    # q1_fevd.csv below; visualising it as a stacked area at [0, 1] would make
     # the small but real contribution invisible.
     fig, ax = plt.subplots(figsize=(11, 4.2))
     h = irf.periods
@@ -197,8 +202,11 @@ def run_q1(errors: pd.DataFrame, panel: pd.DataFrame, rshare: pd.Series):
     ax.plot(h, irf.irf, color="C0", lw=2, label="IRF point estimate")
     ax.axhline(0, color="black", lw=0.7)
     ax.set_xlabel("hours after +1σ forecast-error shock")
-    ax.set_ylabel("intraday continuous price response (EUR/MWh)")
-    ax.set_title("IRF: response of intraday price to a renewable forecast-error shock")
+    ax.set_ylabel("price response (EUR/MWh)")
+    ax.set_title(
+        "IRF: price response to a renewable forecast-error shock "
+        "(price = BE day-ahead, legacy 'intraday' series)"
+    )
     ax.set_xticks(np.arange(0, max(h) + 1, 2))
     ax.legend(loc="lower right")
     _save_fig(fig, "q1_irf_and_fevd")
@@ -207,6 +215,13 @@ def run_q1(errors: pd.DataFrame, panel: pd.DataFrame, rshare: pd.Series):
         {"horizon_h": h, "irf": irf.irf, "lower_5": irf.irf_lower, "upper_95": irf.irf_upper}
     )
     _save_table(irf_df.set_index("horizon_h"), "q1_irf_path")
+
+    # FEVD: share of price forecast-error variance attributable to fe shocks
+    # vs the price's own shocks, per horizon.
+    fevd_df = irf.variance_decomposition.copy()
+    fevd_df.index.name = "horizon_h"
+    _save_table(fevd_df, "q1_fevd")
+    SUMMARY["q1_fevd_from_fe_max"] = float(fevd_df["from_fe"].max())
 
     # ---- 1.4 Rolling Granger -------------------------------------------------
     print("  computing rolling Granger over 1y windows, weekly step …")
@@ -217,7 +232,8 @@ def run_q1(errors: pd.DataFrame, panel: pd.DataFrame, rshare: pd.Series):
     ax.axhline(-np.log10(0.05), color="grey", ls="--", lw=0.8, label="α=0.05")
     ax.set_ylabel("−log10(p)")
     ax.set_title(
-        "Rolling 1-year Granger p-value: forecast-error → intraday price"
+        "Rolling 1-year Granger p-value: forecast-error → price "
+        "(BE day-ahead, legacy 'intraday' series)"
     )
     ax.legend()
     _save_fig(fig, "q1_rolling_granger")
@@ -275,12 +291,12 @@ def run_q1(errors: pd.DataFrame, panel: pd.DataFrame, rshare: pd.Series):
 
 
 # ============================================================================
-# Q2 — Auction vs continuous spread
+# Q2 — Zonal day-ahead spreads (legacy framing: auction vs continuous)
 # ============================================================================
 
 
 def run_q2(errors: pd.DataFrame, panel: pd.DataFrame):
-    print("\n" + "=" * 70 + "\nQ2 — Auction vs continuous spread\n" + "=" * 70)
+    print("\n" + "=" * 70 + "\nQ2 — Zonal day-ahead spreads\n" + "=" * 70)
 
     out = {}
     sc = SpreadConstructor(panel)
@@ -304,7 +320,10 @@ def run_q2(errors: pd.DataFrame, panel: pd.DataFrame):
         ax.plot(spreads.index, spreads[col], color=color, lw=0.4, alpha=0.7)
         ax.set_ylabel(col)
         ax.axhline(0, color="black", lw=0.5)
-    axes[0].set_title("Auction-vs-continuous spreads over the full sample")
+    axes[0].set_title(
+        "Zonal day-ahead spreads over the full sample "
+        "(da_id = DE/LU−BE, id3 = DK1−BE; legacy column names)"
+    )
     axes[-1].set_xlabel("date")
     _save_fig(fig, "q2_spread_timeseries")
 
@@ -330,7 +349,11 @@ def run_q2(errors: pd.DataFrame, panel: pd.DataFrame):
         if len(joined) < 1000:
             print(f"  [{label}] only {len(joined)} aligned obs in window — skipped")
             continue
-        # Down-sample to daily for stationarity tests so ADF autolag doesn't blow up
+        # Down-sample to daily for the formal tests so ADF autolag doesn't blow
+        # up. DISCLOSURE: ADF/KPSS, Engle-Granger, Johansen and the VECM below
+        # therefore run on DAILY means (n ≈ 1,100), not hourly data — and the
+        # VECM alpha loadings are in PER-DAY units. Only the AR(1) half-life
+        # further down uses the full hourly sample (units: hours).
         daily = joined.resample("1D").mean().dropna()
         ca_daily = CointegrationAnalysis(daily.iloc[:, 0], daily.iloc[:, 1])
         ca_full = CointegrationAnalysis(joined.iloc[:, 0], joined.iloc[:, 1])
@@ -399,7 +422,12 @@ def run_q2(errors: pd.DataFrame, panel: pd.DataFrame):
     out["regime_var"] = {}
     fig, axes = plt.subplots(1, 3, figsize=(13, 4), sharey=False)
     for ax, (col, label) in zip(
-        axes, [("da_id_spread", "DA−Cont"), ("id1_spread", "ID1−Cont"), ("id3_spread", "ID3−Cont")]
+        axes,
+        [
+            ("da_id_spread", "DE/LU−BE (legacy da_id)"),
+            ("id1_spread", "id1 (empty series)"),
+            ("id3_spread", "DK1−BE (legacy id3)"),
+        ],
     ):
         sp = spreads[col].dropna()
         if sp.index.tz is None:
@@ -448,7 +476,10 @@ def run_q2(errors: pd.DataFrame, panel: pd.DataFrame):
     fig, ax = plt.subplots(figsize=(11, 3.6))
     ax.plot(rolling_hl_s.index, rolling_hl_s.values, color="C2", lw=1.5)
     ax.set_ylabel("half-life (hours)")
-    ax.set_title("Q2: rolling 90-day mean-reversion speed of (ID3 − Continuous)")
+    ax.set_title(
+        "Q2: rolling 90-day mean-reversion speed of the DK1−BE day-ahead spread "
+        "(legacy name: ID3 − Continuous)"
+    )
     _save_fig(fig, "q2_rolling_halflife")
 
     return {"coint": coint_results, "rolling_hl": rolling_hl_s}
@@ -460,7 +491,7 @@ def run_q2(errors: pd.DataFrame, panel: pd.DataFrame):
 
 
 def run_q3(errors: pd.DataFrame, panel: pd.DataFrame, qh: pd.Series):
-    print("\n" + "=" * 70 + "\nQ3 — Shape spread (hourly vs QH)\n" + "=" * 70)
+    print("\n" + "=" * 70 + "\nQ3 — 'Shape spread' (BE hourly vs Anrainer QH)\n" + "=" * 70)
 
     sc = SpreadConstructor(panel, qh_prices=qh)
     shape = sc.shape_spread().dropna()
@@ -504,7 +535,8 @@ def run_q3(errors: pd.DataFrame, panel: pd.DataFrame, qh: pd.Series):
     ax.set_xlabel("hour of day (CET)")
     ax.set_ylabel("shape spread  (EUR/MWh)")
     ax.set_title(
-        "Q3: shape spread by hour-of-day — duck-curve fingerprint over the full sample"
+        "Q3: 'shape spread' by hour-of-day — BE hourly DA minus 'Anrainer DE/LU' QH mean\n"
+        "(cross-zonal spread; QH leg carries no intra-hour variation before Oct 2025)"
     )
     ax.legend(loc="upper right")
     _save_fig(fig, "q3_shape_by_hour")
@@ -523,14 +555,17 @@ def run_q3(errors: pd.DataFrame, panel: pd.DataFrame, qh: pd.Series):
     h_dummies = pd.get_dummies(aligned["hour"], prefix="h", drop_first=True).astype(float)
     X = add_constant(pd.concat([aligned["sigma"], h_dummies], axis=1)).astype(float)
     y = aligned["shape"].astype(float).values
-    fit = OLS(y, X.values).fit()
+    # HAC (Newey-West) standard errors, 24-hour bandwidth: hourly residuals are
+    # strongly serially correlated, so plain OLS SEs vastly overstate t-stats.
+    fit = OLS(y, X.values).fit(cov_type="HAC", cov_kwds={"maxlags": 24})
     print(f"  shape ~ const + σ + hour-FE   n={int(fit.nobs)}  R²={fit.rsquared:.3f}")
-    print(f"  σ coefficient = {fit.params[1]:+.3f}   t = {fit.tvalues[1]:+.2f}")
+    print(f"  σ coefficient = {fit.params[1]:+.3f}   t = {fit.tvalues[1]:+.2f} (HAC, 24 lags)")
     SUMMARY["q3_regression"] = {
         "n_obs": int(fit.nobs),
         "r2": float(fit.rsquared),
         "sigma_coef": float(fit.params[1]),
         "sigma_t": float(fit.tvalues[1]),
+        "cov_type": "HAC (Newey-West), maxlags=24",
     }
     pd.DataFrame(
         {"param": fit.params, "tstat": fit.tvalues, "pvalue": fit.pvalues}

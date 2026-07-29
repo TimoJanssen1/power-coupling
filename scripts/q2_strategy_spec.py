@@ -1,19 +1,17 @@
 """
-Q2 mean-reversion strategy — PRE-REGISTERED SPECIFICATION.
+Q2 mean-reversion strategy — specification for the DEPRECATED hourly-marks
+backtest (``run_q2_backtest.py``).
 
-This file is committed to git BEFORE the backtest is run. Any subsequent
-tuning, sensitivity analysis, or robustness check is reported separately;
-the headline Sharpe is whatever this exact configuration produces.
-
-Strategy:
-  Trade the spread  s = ID3 − continuous  (the leg with the longest history).
-  Use a rolling z-score over the training window:
-      z_t = (s_t − mean(train)) / std(train)
-  Entry:  enter at |z| > ENTRY_Z, direction = −sign(z)
-          (we trade the auction side; VECM α-directionality says it's the
-          mover, not the continuous market)
-  Exit:   |z| < EXIT_Z   OR   hold ≥ MAX_HOLD   OR   |z| > STOP_LOSS_Z
-          against the position
+HONESTY NOTES (July 2026 revision):
+  * "Pre-registered" was the intent, but the git history cannot verify it —
+    all code and results landed together in the repo's initial commit.
+  * This spec parameterises the abandoned z-score entry/exit strategy, NOT
+    the honest hold-to-delivery backtest (whose parameters are declared at
+    the top of ``run_q2_honest_backtest.py``).
+  * The spread "s = ID3 − continuous" is, per the series identification in
+    FINDINGS.md, actually DK1 day-ahead − Belgian day-ahead. Hourly entries
+    and exits on day-ahead auction prices are not executable; that is why
+    this backtest is deprecated.
 """
 
 from __future__ import annotations

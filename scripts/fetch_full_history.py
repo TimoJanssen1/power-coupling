@@ -14,20 +14,17 @@ under study; the spec's hypothesis is about DE post-coupling.
 
 from __future__ import annotations
 
-import os
 import sys
 import time
 from pathlib import Path
 
-import pandas as pd
-
-os.environ.setdefault("ENTSOE_API_KEY", os.environ.get("ENTOSE_API_KEY", ""))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from power_microstructure.data import EntsoeFetcher, SmardFetcher  # noqa: E402
+from power_microstructure.runconfig import resolve_end_date  # noqa: E402
 
 START = "2018-10-01"
-END = (pd.Timestamp.now(tz="Europe/Berlin").normalize() - pd.Timedelta(days=3)).strftime("%Y-%m-%d")
+END = resolve_end_date()  # pinned to 2026-05-04 unless --end/PM_END says otherwise
 
 print(f"window: {START} → {END}")
 
@@ -54,7 +51,10 @@ rshare = ef.renewable_share(start=START, end=END)
 print(f"  shape={rshare.shape}  elapsed={time.perf_counter()-t0:.1f}s")
 
 # SMARD ---------------------------------------------------------------------
-print("\n[SMARD] full hourly price panel (DA, ID1, ID3, continuous)")
+# NOTE (July 2026): the SMARD "Marktpreis" filters are zonal DAY-AHEAD prices.
+# The panel's legacy column names map to: da_price = DE/LU DA, id3_price =
+# Danish DK1 DA, id_continuous = Belgian DA, id1_price = empty (invalid filter).
+print("\n[SMARD] full hourly day-ahead price panel (DE/LU, DK1, BE; legacy column names)")
 t0 = time.perf_counter()
 sf = SmardFetcher()
 panel = sf.price_panel(start=START, end=END)
@@ -63,12 +63,12 @@ print("  non-null counts:")
 for c in panel.columns:
     print(f"    {c:18}  n={int(panel[c].notna().sum())}")
 
-print("\n[SMARD] quarter-hourly intraday continuous index")
+print("\n[SMARD] quarter-hourly 'Anrainer DE/LU' price series (legacy name: QH intraday index)")
 t0 = time.perf_counter()
 qh = sf.intraday_continuous_index_qh(start=START, end=END)
 print(f"  shape={qh.shape}  elapsed={time.perf_counter()-t0:.1f}s")
 
-print("\n[SMARD] solar generation (capacity-share proxy)")
+print("\n[SMARD] solar (PV) generation")
 t0 = time.perf_counter()
 solar = sf.solar_generation(start=START, end=END)
 print(f"  shape={solar.shape}  elapsed={time.perf_counter()-t0:.1f}s")
