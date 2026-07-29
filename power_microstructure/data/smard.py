@@ -1,13 +1,35 @@
 """
 SMARD (Bundesnetzagentur) data fetcher.
 
-SMARD provides free, no-key-required access to German electricity market data including:
-  - Intraday continuous index prices (ID1, ID3, intraday volume-weighted)
-  - Day-ahead auction prices and volumes
+SMARD provides free, no-key-required access to German electricity market data:
+  - Wholesale ("Marktpreis") price series — these are DAY-AHEAD auction clearing
+    prices (SDAC) for DE/LU and its neighbouring bidding zones. SMARD does NOT
+    publish EPEX intraday indices (ID1/ID3/IDFull) through these modules.
   - Actual generation / consumption by energy source
   - Quarter-hourly and hourly granularity
 
+IMPORTANT — series identification (July 2026 revision):
+    The first version of this repo mislabelled the market-price filter codes.
+    What the legacy method/key names actually return (verified against the
+    SMARD OpenAPI spec and against signature events in the data itself — see
+    "Revision notes" in FINDINGS.md):
+
+        da_price          4169  "Marktpreis: Deutschland/Luxemburg"  (DE/LU DA)
+        id3_price         252   "Marktpreis: Dänemark 1"
+                                (DK1 DA — NOT the EPEX ID3 index)
+        intraday_index    4996  "Marktpreis: Belgien"
+                                (Belgian DA — NOT a German intraday index)
+        intraday_index_qh 5078  "Marktpreis: Anrainer DE/LU"
+                                (neighbouring-zone DA; hourly values
+                                replicated at QH until the 15-min MTU
+                                                                      go-live, Oct 2025)
+        id1_price         251   not a valid SMARD filter — returns an empty series
+
+    The legacy key and column names are retained because the parquet cache
+    filenames and the downstream results schema derive from them.
+
 API documentation: https://www.smard.de/en/downloadcenter/download-market-data/
+Filter codes: https://github.com/bundesAPI/smard-api (OpenAPI spec)
 
 Data is cached as Parquet; set PM_CACHE_DIR env var to override location.
 
@@ -15,55 +37,56 @@ Usage
 -----
 >>> from power_microstructure.data import SmardFetcher
 >>> sf = SmardFetcher()
->>> prices = sf.intraday_continuous_index("2022-01-01", "2024-01-01")
+>>> be_da = sf.intraday_continuous_index("2022-01-01", "2024-01-01")  # Belgian DA (legacy name)
 """
 
 from __future__ import annotations
 
+import hashlib
 import io
 import logging
+import os
 import time
 from pathlib import Path
 from typing import Literal
-import os
-import hashlib
 
 import pandas as pd
 import requests
 
 logger = logging.getLogger(__name__)
 
-_CACHE_ROOT = Path(os.environ.get("PM_CACHE_DIR", Path.home() / ".cache" / "power_microstructure" / "smard"))
+_CACHE_ROOT = Path(
+    os.environ.get("PM_CACHE_DIR", Path.home() / ".cache" / "power_microstructure" / "smard")
+)
 
 # SMARD filter/region codes
 _SMARD_BASE = "https://www.smard.de/app/chart_data"
 
-# SMARD data index codes (from their API)
+# SMARD data index codes, verified against the bundesAPI/smard-api OpenAPI spec.
+# All "Marktpreis" filters are day-ahead auction prices (SDAC), per zone.
+# Dict KEYS are legacy names kept for parquet-cache and results-schema
+# continuity — see the module docstring for the true series identities.
 _FILTER_CODES = {
-    # Market prices
-    "da_price": 4169,           # Day-ahead price (EPEX DE-LU)
-    "intraday_index": 4996,     # Intraday continuous mean (hourly)
-    "intraday_index_qh": 5078,  # Intraday continuous mean (15-min)
-    "id1_price": 251,           # ID1 auction price
-    "id3_price": 252,           # ID3 auction price
+    # Market prices (all DAY-AHEAD auction clearing prices)
+    "da_price": 4169,           # "Marktpreis: Deutschland/Luxemburg" — DE/LU DA
+    "intraday_index": 4996,     # "Marktpreis: Belgien" — Belgian DA (legacy key)
+    "intraday_index_qh": 5078,  # "Marktpreis: Anrainer DE/LU" — neighbour-zone DA (legacy key)
+    "id1_price": 251,           # invalid filter, returns no data (legacy key)
+    "id3_price": 252,           # "Marktpreis: Dänemark 1" — DK1 DA (legacy key)
     # Generation (actual)
-    "wind_onshore": 1225,
-    "wind_offshore": 1224,
-    "solar": 4067,
-    "biomass": 4066,
-    "hydro": 1226,
-    "other_renewable": 1228,
-    "nuclear": 1223,
-    "lignite": 1221,
-    "hard_coal": 1222,
-    "gas": 4071,
-    "pumped_hydro": 4359,
+    "wind_onshore": 4067,       # "Stromerzeugung: Wind Onshore"
+    "wind_offshore": 1225,      # "Stromerzeugung: Wind Offshore"
+    "solar_pv": 4068,           # "Stromerzeugung: Photovoltaik"
+    "biomass": 4066,            # "Stromerzeugung: Biomasse"
+    "hydro": 1226,              # "Stromerzeugung: Wasserkraft"
+    "other_renewable": 1228,    # "Stromerzeugung: Sonstige Erneuerbare"
+    "nuclear": 1224,            # "Stromerzeugung: Kernenergie"
+    "lignite": 1223,            # "Stromerzeugung: Braunkohle"
+    "hard_coal": 4069,          # "Stromerzeugung: Steinkohle"
+    "gas": 4071,                # "Stromerzeugung: Erdgas"
+    "pumped_hydro": 4070,       # "Stromerzeugung: Pumpspeicher"
     # Load
-    "load_actual": 410,
-    "load_forecast": 4359,
-    # Cross-border
-    "export": 1227,
-    "import": 4996,
+    "load_actual": 410,         # "Stromverbrauch: Gesamt (Netzlast)"
 }
 
 _REGION = "DE"
@@ -90,23 +113,59 @@ class SmardFetcher:
     # ------------------------------------------------------------------
 
     def day_ahead_prices(self, start: str = "2018-01-01", end: str = "2024-01-01") -> pd.Series:
-        """EPEX DE-LU day-ahead auction clearing prices (EUR/MWh, hourly)."""
+        """DE/LU day-ahead auction clearing prices (EUR/MWh, hourly). SMARD filter 4169."""
         return self._fetch_series("da_price", start, end, "hourly").rename("da_price")
 
-    def intraday_continuous_index(self, start: str = "2018-01-01", end: str = "2024-01-01") -> pd.Series:
-        """Intraday continuous volume-weighted mean price (EUR/MWh, hourly)."""
+    def intraday_continuous_index(
+        self, start: str = "2018-01-01", end: str = "2024-01-01"
+    ) -> pd.Series:
+        """
+        Belgian day-ahead auction clearing prices (EUR/MWh, hourly). SMARD filter
+        4996, "Marktpreis: Belgien".
+
+        LEGACY NAME. This method was originally believed to return the German
+        intraday continuous VWAP index; it does not (SMARD publishes no such
+        series). Method and column names are kept for cache/schema continuity.
+        """
         return self._fetch_series("intraday_index", start, end, "hourly").rename("id_continuous")
 
-    def intraday_continuous_index_qh(self, start: str = "2022-01-01", end: str = "2024-01-01") -> pd.Series:
-        """Intraday continuous volume-weighted mean price (EUR/MWh, quarter-hourly)."""
+    def intraday_continuous_index_qh(
+        self, start: str = "2022-01-01", end: str = "2024-01-01"
+    ) -> pd.Series:
+        """
+        Neighbouring-zone day-ahead price at quarter-hourly resolution (EUR/MWh).
+        SMARD filter 5078, "Marktpreis: Anrainer DE/LU".
+
+        LEGACY NAME — not a German intraday QH index. Before the 15-minute MTU
+        go-live (Oct 2025) the underlying market is hourly and each hourly value
+        is simply replicated across its four quarter-hours, i.e. the series
+        carries NO intra-hour information for most of this repo's sample.
+        """
         return self._fetch_series("intraday_index_qh", start, end, "qh").rename("id_continuous_qh")
 
     def id1_prices(self, start: str = "2018-01-01", end: str = "2024-01-01") -> pd.Series:
-        """EPEX ID1 intraday auction clearing prices (EUR/MWh, hourly)."""
+        """
+        Always empty: filter code 251 does not exist in the SMARD API, so every
+        weekly request 404s and the fetcher returns an all-NaN series.
+
+        LEGACY NAME. This was originally believed to be the EPEX ID1 index. Note
+        the real EPEX ID1 is not an auction price at all — it is the volume-
+        weighted average of continuous trades in the last hour before delivery.
+        Kept so the panel schema (and its all-NaN column) stays reproducible.
+        """
         return self._fetch_series("id1_price", start, end, "hourly").rename("id1_price")
 
     def id3_prices(self, start: str = "2018-01-01", end: str = "2024-01-01") -> pd.Series:
-        """EPEX ID3 intraday auction clearing prices (EUR/MWh, hourly)."""
+        """
+        Danish DK1 day-ahead auction clearing prices (EUR/MWh, hourly). SMARD
+        filter 252, "Marktpreis: Dänemark 1".
+
+        LEGACY NAME. This was originally believed to be the EPEX ID3 index (which
+        is a continuous-trading VWAP, not an auction). The series is identifiable
+        as DK1 in the data itself: it equals the DE/LU day-ahead price to the
+        cent in roughly half of all hours (price coupling), including the
+        936.28 EUR/MWh Dunkelflaute peak of 2024-12-12.
+        """
         return self._fetch_series("id3_price", start, end, "hourly").rename("id3_price")
 
     # ------------------------------------------------------------------
@@ -120,8 +179,16 @@ class SmardFetcher:
         return pd.concat([on, off], axis=1)
 
     def solar_generation(self, start: str = "2018-01-01", end: str = "2024-01-01") -> pd.Series:
-        """Actual solar (photovoltaic) generation (MWh, hourly)."""
-        return self._fetch_series("solar", start, end, "hourly").rename("solar")
+        """
+        Actual solar (photovoltaic) generation (MWh, hourly). SMARD filter 4068.
+
+        NOTE: v1 of this repo requested filter 4067 under the cache key "solar";
+        4067 is "Stromerzeugung: Wind Onshore", so legacy "solar_*.parquet" cache
+        files actually contain onshore wind (their minimum never touches zero at
+        night). The code and cache key are corrected; the series was never used
+        in any analysis, only fetched.
+        """
+        return self._fetch_series("solar_pv", start, end, "hourly").rename("solar")
 
     def actual_load(self, start: str = "2018-01-01", end: str = "2024-01-01") -> pd.Series:
         """Actual total load (MW, hourly)."""
@@ -133,13 +200,17 @@ class SmardFetcher:
 
     def price_panel(self, start: str = "2018-01-01", end: str = "2024-01-01") -> pd.DataFrame:
         """
-        Aligned panel of DA, ID1, ID3, and continuous intraday prices.
+        Aligned panel of day-ahead prices for DE/LU and two coupled zones.
 
-        Columns: da_price, id1_price, id3_price, id_continuous
+        Columns (LEGACY names — see module docstring):
+            da_price       DE/LU day-ahead price
+            id1_price      all-NaN (filter 251 does not exist)
+            id3_price      Danish DK1 day-ahead price
+            id_continuous  Belgian day-ahead price
         Index: UTC-aware DatetimeIndex at hourly frequency.
 
-        Missing values (e.g. ID3 not available for early dates) are left as NaN;
-        callers should decide how to handle them rather than silently filling.
+        Missing values are left as NaN; callers should decide how to handle
+        them rather than silently filling.
         """
         da = self.day_ahead_prices(start, end)
         id1 = self.id1_prices(start, end)
@@ -149,7 +220,9 @@ class SmardFetcher:
         panel.index = pd.to_datetime(panel.index, utc=True)
         return panel
 
-    def renewable_generation_panel(self, start: str = "2018-01-01", end: str = "2024-01-01") -> pd.DataFrame:
+    def renewable_generation_panel(
+        self, start: str = "2018-01-01", end: str = "2024-01-01"
+    ) -> pd.DataFrame:
         """Wind (on+off) and solar actual generation aligned to hourly UTC index."""
         wind = self.wind_generation(start, end)
         solar = self.solar_generation(start, end)
@@ -214,7 +287,10 @@ class SmardFetcher:
         return result
 
     def _fetch_week(self, filter_code: int, timestamp_ms: int, resolution: str) -> pd.Series | None:
-        url = f"{_SMARD_BASE}/{filter_code}/{_REGION}/{filter_code}_{_REGION}_{resolution}_{timestamp_ms}.json"
+        url = (
+            f"{_SMARD_BASE}/{filter_code}/{_REGION}/"
+            f"{filter_code}_{_REGION}_{resolution}_{timestamp_ms}.json"
+        )
         resp = self._session.get(url, timeout=30)
         if resp.status_code == 404:
             return None
@@ -224,7 +300,11 @@ class SmardFetcher:
         if not series_data:
             return None
         # Each entry is [timestamp_ms, value_or_null]
-        records = [(pd.Timestamp(ts, unit="ms", tz="UTC"), v) for ts, v in series_data if v is not None]
+        records = [
+            (pd.Timestamp(ts, unit="ms", tz="UTC"), v)
+            for ts, v in series_data
+            if v is not None
+        ]
         if not records:
             return None
         idx, vals = zip(*records)
@@ -254,9 +334,10 @@ class SmardFetcher:
         """
         s_ts = int(pd.Timestamp(start, tz="UTC").timestamp() * 1000)
         e_ts = int(pd.Timestamp(end, tz="UTC").timestamp() * 1000)
+        module_param = "&request_form[moduleIds][]=".join(str(m) for m in module_ids)
         url = (
             "https://www.smard.de/app/downloadcenter/download_market_data/?"
-            f"request_form[moduleIds][]={'&request_form[moduleIds][]='.join(str(m) for m in module_ids)}"
+            f"request_form[moduleIds][]={module_param}"
             f"&request_form[region]={region}"
             f"&request_form[timestamp_from]={s_ts}"
             f"&request_form[timestamp_to]={e_ts}"

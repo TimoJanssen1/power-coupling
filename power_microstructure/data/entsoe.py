@@ -24,7 +24,9 @@ from entsoe.exceptions import NoMatchingDataError
 
 logger = logging.getLogger(__name__)
 
-_CACHE_ROOT = Path(os.environ.get("PM_CACHE_DIR", Path.home() / ".cache" / "power_microstructure" / "entsoe"))
+_CACHE_ROOT = Path(
+    os.environ.get("PM_CACHE_DIR", Path.home() / ".cache" / "power_microstructure" / "entsoe")
+)
 _AREA = "DE_LU"  # Germany-Luxembourg bidding zone (post-2018 market coupling)
 
 
@@ -46,13 +48,17 @@ class EntsoeFetcher:
     # Public API
     # ------------------------------------------------------------------
 
-    def wind_solar_forecast(self, area: str = _AREA, start: str = "2018-01-01", end: str = "2024-01-01") -> pd.DataFrame:
+    def wind_solar_forecast(
+        self, area: str = _AREA, start: str = "2018-01-01", end: str = "2024-01-01"
+    ) -> pd.DataFrame:
         """Day-ahead generation forecast for wind (on+offshore) and solar (MWh)."""
         return self._cached("wind_solar_forecast", area, start, end,
                             self._client.query_wind_and_solar_forecast, area,
                             start=self._ts(start), end=self._ts(end), psr_type=None)
 
-    def actual_generation_per_type(self, area: str = _AREA, start: str = "2018-01-01", end: str = "2024-01-01") -> pd.DataFrame:
+    def actual_generation_per_type(
+        self, area: str = _AREA, start: str = "2018-01-01", end: str = "2024-01-01"
+    ) -> pd.DataFrame:
         """Actual generation by production type (MWh).
 
         ENTSO-E's ``query_generation`` returns ~17 columns × 35k rows per year.
@@ -98,25 +104,33 @@ class EntsoeFetcher:
             saveable.to_parquet(cache_path)
         return combined
 
-    def day_ahead_prices(self, area: str = _AREA, start: str = "2018-01-01", end: str = "2024-01-01") -> pd.Series:
+    def day_ahead_prices(
+        self, area: str = _AREA, start: str = "2018-01-01", end: str = "2024-01-01"
+    ) -> pd.Series:
         """Day-ahead market clearing prices (EUR/MWh)."""
         return self._cached("da_prices", area, start, end,
                             self._client.query_day_ahead_prices, area,
                             start=self._ts(start), end=self._ts(end))
 
-    def load_forecast(self, area: str = _AREA, start: str = "2018-01-01", end: str = "2024-01-01") -> pd.Series:
+    def load_forecast(
+        self, area: str = _AREA, start: str = "2018-01-01", end: str = "2024-01-01"
+    ) -> pd.Series:
         """Day-ahead total load forecast (MW)."""
         return self._cached("load_forecast", area, start, end,
                             self._client.query_load_forecast, area,
                             start=self._ts(start), end=self._ts(end))
 
-    def actual_load(self, area: str = _AREA, start: str = "2018-01-01", end: str = "2024-01-01") -> pd.Series:
+    def actual_load(
+        self, area: str = _AREA, start: str = "2018-01-01", end: str = "2024-01-01"
+    ) -> pd.Series:
         """Actual total load (MW)."""
         return self._cached("actual_load", area, start, end,
                             self._client.query_load, area,
                             start=self._ts(start), end=self._ts(end))
 
-    def cross_border_flows(self, area_from: str, area_to: str, start: str = "2022-01-01", end: str = "2024-01-01") -> pd.Series:
+    def cross_border_flows(
+        self, area_from: str, area_to: str, start: str = "2022-01-01", end: str = "2024-01-01"
+    ) -> pd.Series:
         """Physical cross-border flows between two areas (MWh)."""
         tag = f"{area_from}_{area_to}"
         return self._cached("flows", tag, start, end,
@@ -127,7 +141,9 @@ class EntsoeFetcher:
     # Derived / convenience
     # ------------------------------------------------------------------
 
-    def forecast_error(self, area: str = _AREA, start: str = "2018-01-01", end: str = "2024-01-01") -> pd.DataFrame:
+    def forecast_error(
+        self, area: str = _AREA, start: str = "2018-01-01", end: str = "2024-01-01"
+    ) -> pd.DataFrame:
         """
         Signed renewable forecast error: actual − forecast (MWh).
 
@@ -146,14 +162,30 @@ class EntsoeFetcher:
         wind_cols_fc = [c for c in forecast.columns if "Wind" in str(c)]
         solar_cols_fc = [c for c in forecast.columns if "Solar" in str(c)]
 
-        wind_fc = forecast[wind_cols_fc].sum(axis=1) if wind_cols_fc else pd.Series(0, index=forecast.index)
-        solar_fc = forecast[solar_cols_fc].sum(axis=1) if solar_cols_fc else pd.Series(0, index=forecast.index)
+        wind_fc = (
+            forecast[wind_cols_fc].sum(axis=1)
+            if wind_cols_fc
+            else pd.Series(0, index=forecast.index)
+        )
+        solar_fc = (
+            forecast[solar_cols_fc].sum(axis=1)
+            if solar_cols_fc
+            else pd.Series(0, index=forecast.index)
+        )
 
         wind_cols_ac = [c for c in actual.columns if "Wind" in str(c)]
         solar_cols_ac = [c for c in actual.columns if "Solar" in str(c)]
 
-        wind_ac = actual[wind_cols_ac].sum(axis=1) if wind_cols_ac else pd.Series(0, index=actual.index)
-        solar_ac = actual[solar_cols_ac].sum(axis=1) if solar_cols_ac else pd.Series(0, index=actual.index)
+        wind_ac = (
+            actual[wind_cols_ac].sum(axis=1)
+            if wind_cols_ac
+            else pd.Series(0, index=actual.index)
+        )
+        solar_ac = (
+            actual[solar_cols_ac].sum(axis=1)
+            if solar_cols_ac
+            else pd.Series(0, index=actual.index)
+        )
 
         idx = wind_fc.index.intersection(wind_ac.index)
         wind_error = wind_ac.loc[idx] - wind_fc.loc[idx]
@@ -165,7 +197,9 @@ class EntsoeFetcher:
             "total_error": wind_error + solar_error,
         })
 
-    def renewable_share(self, area: str = _AREA, start: str = "2018-01-01", end: str = "2024-01-01") -> pd.Series:
+    def renewable_share(
+        self, area: str = _AREA, start: str = "2018-01-01", end: str = "2024-01-01"
+    ) -> pd.Series:
         """Hourly renewable share = (wind + solar) / total generation."""
         actual = self._resample_hourly(self.actual_generation_per_type(area, start, end))
         wind_cols = [c for c in actual.columns if "Wind" in str(c)]
@@ -193,11 +227,19 @@ class EntsoeFetcher:
         name = "_".join(p.replace("/", "-") for p in parts[:3])
         return _CACHE_ROOT / f"{name}_{key}.parquet"
 
-    def _cached(self, query_name: str, area: str, start_key: str, end_key: str, fn, *args, **kwargs):
+    def _cached(
+        self, query_name: str, area: str, start_key: str, end_key: str, fn, *args, **kwargs
+    ):
         path = self._cache_path(query_name, area, start_key, end_key)
         if self._cache and path.exists():
             logger.debug("Cache hit: %s", path.name)
-            return pd.read_parquet(path)
+            cached = pd.read_parquet(path)
+            # Series-returning queries (prices, load) are stored as one-column
+            # frames (parquet has no Series); squeeze back so cache hits return
+            # the same type as live API calls.
+            if cached.shape[1] == 1:
+                return cached.iloc[:, 0]
+            return cached
         try:
             result = fn(*args, **kwargs)
         except NoMatchingDataError:
