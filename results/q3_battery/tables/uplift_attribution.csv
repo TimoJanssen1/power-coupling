@@ -1,5 +1,5 @@
 strategy,annual_rev_eur,uplift_vs_naive_eur,uplift_pct,rev_per_cycle_eur
-naive,3921645.0,0.0,0.0,12635.2
-da_lp,4705087.0,783442.0,20.0,9940.5
-da_plus_tilt,4698842.0,777197.0,19.8,9946.4
-perfect_foresight,5515330.0,1593685.0,40.6,11251.6
+naive,3906055.0,0.0,0.0,15033.6
+da_lp,5644926.0,1738871.0,44.5,11924.9
+da_plus_tilt,5636252.0,1730197.0,44.3,11929.5
+alt_series_lp,5514052.0,1607997.0,41.2,11247.7

@@ -6,69 +6,75 @@
     "wear_eur_per_mwh": 2.0,
     "max_cycles_per_day": 1.5
   },
+  "settlement": {
+    "naive": "DE/LU DA",
+    "da_lp": "DE/LU DA",
+    "da_plus_tilt": "DE/LU DA",
+    "alt_series_lp": "Belgian DA (legacy 'id_continuous' series)"
+  },
   "window": {
     "start": "2018-10-01",
-    "end": "2026-05-04",
+    "end": "2026-05-03",
     "years": 7.59
   },
   "headline": {
     "naive": {
-      "revenue_eur_total": 29772026.0,
-      "revenue_eur_per_year": 3921645.0,
-      "revenue_eur_per_mw_per_year": 39216.0,
-      "n_full_cycles": 2356.3,
-      "rev_per_cycle_eur": 12635.2,
-      "rev_per_mwh_throughput": 63.18
+      "revenue_eur_total": 29642971.0,
+      "revenue_eur_per_year": 3906055.0,
+      "revenue_eur_per_mw_per_year": 39061.0,
+      "n_full_cycles": 1971.8,
+      "rev_per_cycle_eur": 15033.6,
+      "rev_per_mwh_throughput": 75.17
     },
     "da_lp": {
-      "revenue_eur_total": 35719692.0,
-      "revenue_eur_per_year": 4705087.0,
-      "revenue_eur_per_mw_per_year": 47051.0,
-      "n_full_cycles": 3593.4,
-      "rev_per_cycle_eur": 9940.5,
-      "rev_per_mwh_throughput": 49.7
+      "revenue_eur_total": 42839230.0,
+      "revenue_eur_per_year": 5644926.0,
+      "revenue_eur_per_mw_per_year": 56449.0,
+      "n_full_cycles": 3592.4,
+      "rev_per_cycle_eur": 11924.9,
+      "rev_per_mwh_throughput": 59.62
     },
     "da_plus_tilt": {
-      "revenue_eur_total": 35672285.0,
-      "revenue_eur_per_year": 4698842.0,
-      "revenue_eur_per_mw_per_year": 46988.0,
-      "n_full_cycles": 3586.5,
-      "rev_per_cycle_eur": 9946.4,
-      "rev_per_mwh_throughput": 49.73
+      "revenue_eur_total": 42773402.0,
+      "revenue_eur_per_year": 5636252.0,
+      "revenue_eur_per_mw_per_year": 56363.0,
+      "n_full_cycles": 3585.5,
+      "rev_per_cycle_eur": 11929.5,
+      "rev_per_mwh_throughput": 59.65
     },
-    "perfect_foresight": {
-      "revenue_eur_total": 41870831.0,
-      "revenue_eur_per_year": 5515330.0,
-      "revenue_eur_per_mw_per_year": 55153.0,
-      "n_full_cycles": 3721.3,
-      "rev_per_cycle_eur": 11251.6,
-      "rev_per_mwh_throughput": 56.26
+    "alt_series_lp": {
+      "revenue_eur_total": 41846028.0,
+      "revenue_eur_per_year": 5514052.0,
+      "revenue_eur_per_mw_per_year": 55141.0,
+      "n_full_cycles": 3720.4,
+      "rev_per_cycle_eur": 11247.7,
+      "rev_per_mwh_throughput": 56.24
     }
   },
   "uplift_vs_naive": {
     "naive": {
-      "annual_rev_eur": 3921645.0,
+      "annual_rev_eur": 3906055.0,
       "uplift_vs_naive_eur": 0.0,
       "uplift_pct": 0.0,
-      "rev_per_cycle_eur": 12635.2
+      "rev_per_cycle_eur": 15033.6
     },
     "da_lp": {
-      "annual_rev_eur": 4705087.0,
-      "uplift_vs_naive_eur": 783442.0,
-      "uplift_pct": 20.0,
-      "rev_per_cycle_eur": 9940.5
+      "annual_rev_eur": 5644926.0,
+      "uplift_vs_naive_eur": 1738871.0,
+      "uplift_pct": 44.5,
+      "rev_per_cycle_eur": 11924.9
     },
     "da_plus_tilt": {
-      "annual_rev_eur": 4698842.0,
-      "uplift_vs_naive_eur": 777197.0,
-      "uplift_pct": 19.8,
-      "rev_per_cycle_eur": 9946.4
+      "annual_rev_eur": 5636252.0,
+      "uplift_vs_naive_eur": 1730197.0,
+      "uplift_pct": 44.3,
+      "rev_per_cycle_eur": 11929.5
     },
-    "perfect_foresight": {
-      "annual_rev_eur": 5515330.0,
-      "uplift_vs_naive_eur": 1593685.0,
-      "uplift_pct": 40.6,
-      "rev_per_cycle_eur": 11251.6
+    "alt_series_lp": {
+      "annual_rev_eur": 5514052.0,
+      "uplift_vs_naive_eur": 1607997.0,
+      "uplift_pct": 41.2,
+      "rev_per_cycle_eur": 11247.7
     }
   }
 }

@@ -1,4 +1,4 @@
-scenario,sharpe_annualised,sortino,max_drawdown_eur,win_rate,n_trades,total_pnl_eur_per_mwh,avg_pnl_per_trade_eur_per_mwh,bootstrap_p_sharpe_pos
-optimistic,5.93,14.421,-570.6,0.538,2553,43646.4,17.096,0.0
-realistic,3.882,10.505,-994.9,0.4,2553,28475.7,11.154,0.0
-pessimistic,1.796,4.949,-3979.2,0.322,2554,13151.7,5.149,0.0245
+scenario,sharpe_annualised,sharpe_annualised_365,sortino,max_drawdown_eur,win_rate,n_traded_days,total_pnl_eur_per_mwh,avg_pnl_per_trade_eur_per_mwh,bootstrap_p_sharpe_pos
+optimistic,5.945,7.155,14.489,-570.6,0.538,2559,43750.1,17.097,0.0
+realistic,3.892,4.684,10.567,-994.9,0.399,2559,28543.7,11.154,0.0
+pessimistic,1.801,2.168,4.978,-3979.2,0.322,2560,13183.7,5.15,0.0245

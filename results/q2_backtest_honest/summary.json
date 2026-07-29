@@ -3,47 +3,55 @@
     "ENTRY_THRESHOLD_eur_per_mwh": 5.0,
     "TRAINING_DAYS": 90,
     "N_BOOTSTRAP": 2000,
-    "signal": "trailing mean of realised (ID3 - continuous_VWAP) per delivery hour",
-    "decision_horizon": "auction commitment (22:00 day t-1)",
-    "holding": "to physical delivery, ~24h wall clock",
-    "execution_costs_apply_to": "continuous leg only"
+    "signal": "trailing mean of realised (DK1_DA - BE_DA) per delivery hour (legacy columns id3_price - id_continuous), lagged one delivery day",
+    "decision_horizon": "before SDAC gate closure 12:00 CET D-1; signal available from ~12:45 CET D-2 (previous day's auction publication)",
+    "executability": "paper spread \u2014 capturing a zonal DA price difference requires cross-zonal transmission rights, not modelled",
+    "execution_costs_apply_to": "one leg (round-trip cost scenarios)",
+    "sharpe_convention": "sqrt(252) headline; sqrt(365) reported alongside"
   },
   "data": {
-    "n_delivery_days": 2767,
-    "n_candidate_trades": 2554
+    "window": {
+      "start": "2018-10-01",
+      "end": "2026-05-04"
+    },
+    "n_delivery_days": 2773,
+    "n_candidate_trades": 2560
   },
   "scenarios": {
     "optimistic": {
       "scenario": "optimistic",
-      "sharpe_annualised": 5.93,
-      "sortino": 14.421,
+      "sharpe_annualised": 5.945,
+      "sharpe_annualised_365": 7.155,
+      "sortino": 14.489,
       "max_drawdown_eur": -570.6,
       "win_rate": 0.538,
-      "n_trades": 2553,
-      "total_pnl_eur_per_mwh": 43646.4,
-      "avg_pnl_per_trade_eur_per_mwh": 17.096,
+      "n_traded_days": 2559,
+      "total_pnl_eur_per_mwh": 43750.1,
+      "avg_pnl_per_trade_eur_per_mwh": 17.097,
       "bootstrap_p_sharpe_pos": 0.0
     },
     "realistic": {
       "scenario": "realistic",
-      "sharpe_annualised": 3.882,
-      "sortino": 10.505,
+      "sharpe_annualised": 3.892,
+      "sharpe_annualised_365": 4.684,
+      "sortino": 10.567,
       "max_drawdown_eur": -994.9,
-      "win_rate": 0.4,
-      "n_trades": 2553,
-      "total_pnl_eur_per_mwh": 28475.7,
+      "win_rate": 0.399,
+      "n_traded_days": 2559,
+      "total_pnl_eur_per_mwh": 28543.7,
       "avg_pnl_per_trade_eur_per_mwh": 11.154,
       "bootstrap_p_sharpe_pos": 0.0
     },
     "pessimistic": {
       "scenario": "pessimistic",
-      "sharpe_annualised": 1.796,
-      "sortino": 4.949,
+      "sharpe_annualised": 1.801,
+      "sharpe_annualised_365": 2.168,
+      "sortino": 4.978,
       "max_drawdown_eur": -3979.2,
       "win_rate": 0.322,
-      "n_trades": 2554,
-      "total_pnl_eur_per_mwh": 13151.7,
-      "avg_pnl_per_trade_eur_per_mwh": 5.149,
+      "n_traded_days": 2560,
+      "total_pnl_eur_per_mwh": 13183.7,
+      "avg_pnl_per_trade_eur_per_mwh": 5.15,
       "bootstrap_p_sharpe_pos": 0.0245
     }
   }
