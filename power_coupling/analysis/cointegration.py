@@ -1,24 +1,21 @@
 """
 Cointegration and error correction analysis for power price spread pairs.
 
-(In this repo the pairs are zonal DAY-AHEAD price legs — DE/LU, DK1, Belgium —
+(In this repo the pairs are zonal day-ahead price legs (DE/LU, DK1, Belgium)
 carried under legacy "auction"/"continuous" names; see FINDINGS.md.)
 
 Methodology
 -----------
-1. Unit root pre-tests: ADF + KPSS (both, as recommended by Kwiatkowski et al. 1992).
-   ADF: H0 = unit root.  KPSS: H0 = stationary.
+1. Unit root pre-tests: ADF (H0 = unit root) + KPSS (H0 = stationary).
    Conclusion is drawn from the joint outcome:
      ADF reject + KPSS not-reject → stationary
      ADF not-reject + KPSS reject → unit root
-     Both reject or neither → inconclusive (proceed with caution)
+     Both reject or neither → inconclusive
 
 2. Johansen cointegration test (trace and max-eigenvalue statistics).
-   Determines whether price pairs share a long-run equilibrium.
 
-3. Vector Error Correction Model (VECM) estimation.
-   Gives the speed of adjustment (alpha coefficients) — how quickly each
-   series corrects toward the long-run equilibrium after a shock.
+3. VECM estimation. The alpha coefficients give how quickly each series
+   corrects toward the long-run equilibrium after a shock.
 
 4. Half-life estimation via OLS on AR(1) spread:
    ΔS_t = β·S_{t-1} + ε_t  →  HL = −ln(2)/ln(1+β)
@@ -181,24 +178,20 @@ class CointegrationAnalysis:
         k_ar_diff : int
             Number of lagged difference terms in the VAR.
 
-        Interpretation note
-        -------------------
-        In an n-variable system, cointegration corresponds to rank r with
-        0 < r < n. If the estimated rank equals n (here: rank 2 in a bivariate
-        system), the matrix Pi is full rank and the levels VAR is stationary —
-        i.e. BOTH series are I(0) and "cointegration" is not the right
-        description; there is no unit root to share.
+        Interpretation note: cointegration corresponds to rank r with
+        0 < r < n. If the estimated rank equals n (rank 2 in a bivariate
+        system), the levels VAR is stationary, i.e. both series are I(0)
+        and there is no unit root to share; "cointegration" is not the
+        right description.
         """
         result = coint_johansen(self._data, det_order=det_order, k_ar_diff=k_ar_diff)
 
-        # Count cointegrating relations at the 95% critical value. NOTE:
-        # n_cointegrating_vectors == n_vars means joint stationarity of the
-        # levels system, NOT cointegration (see docstring).
+        # count relations at the 95% critical value; n_coint == n_vars means
+        # joint stationarity, not cointegration (see docstring)
         trace_stats = result.lr1
         trace_crit = result.cvt[:, 1]  # 95% column
         n_coint = int(np.sum(trace_stats > trace_crit))
 
-        # Normalize cointegrating vector (first element = 1)
         beta = result.evec[:, 0]
         if beta[0] != 0:
             beta = beta / beta[0]
@@ -219,21 +212,16 @@ class CointegrationAnalysis:
 
     def vecm(self, k_ar_diff: int = 1, coint_rank: int = 1) -> VECMResult:
         """
-        Estimate Vector Error Correction Model.
+        Estimate a VECM. Larger |alpha| = faster mean-reversion.
 
-        The alpha (adjustment speed) coefficients tell you how fast each leg
-        of the pair corrects toward the long-run relation after a shock —
-        with this repo's data, which zonal day-ahead price does more of the
-        closing when a cross-zonal spread opens (a descriptive statement, not
+        With this repo's data alpha tells you which zonal day-ahead price does
+        more of the closing when a cross-zonal spread opens (descriptive, not
         venue price discovery; see FINDINGS.md "Revision notes").
-
-        A larger |alpha| = faster mean-reversion.
         """
         data = pd.DataFrame(self._data, columns=[str(self.s1.name), str(self.s2.name)])
         model = VECM(data, k_ar_diff=k_ar_diff, coint_rank=coint_rank, deterministic="co")
         fit = model.fit()
 
-        # Extract adjustment speeds and their t-stats
         alpha = fit.alpha.flatten()
         # VECM result object structure varies by statsmodels version
         try:
@@ -245,7 +233,6 @@ class CointegrationAnalysis:
             t_alpha = np.full_like(alpha, float("nan"))
             p_alpha = np.full_like(alpha, float("nan"))
 
-        # Half-life from spread AR(1)
         spread = self.s1.values - fit.beta[0, 0] * self.s2.values
         spread_series = pd.Series(spread, index=self.s1.index).dropna()
         half_life = self._half_life_ar1(spread_series)
@@ -341,7 +328,7 @@ class CointegrationAnalysis:
         if gamma >= 0:
             return float("inf")
         # gamma <= -1 means anti-persistent/oscillating or white noise;
-        # log(1+gamma) would be log(0) or log(negative) — treat as HL=0.
+        # log(1+gamma) would be log(0) or log(negative), so treat as HL=0
         if gamma <= -1:
             return 0.0
         return float(-np.log(2) / np.log(1 + gamma))

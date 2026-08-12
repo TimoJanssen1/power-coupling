@@ -1,9 +1,9 @@
 """
-power_microstructure — European day-ahead market-coupling research package.
+power_coupling: European day-ahead market-coupling research package.
 
 The package name predates the July 2026 revision: the SMARD price series v1
-believed to be German intraday indices are zonal DAY-AHEAD prices (DK1,
-Belgium, DE/LU neighbours) — see FINDINGS.md "Revision notes".
+believed to be German intraday indices are zonal day-ahead prices (DK1,
+Belgium, DE/LU neighbours); see FINDINGS.md "Revision notes".
 
 Research questions (post-revision framing):
   Q1  Renewable forecast errors and next-day auction prices (Granger, IRF, Bai-Perron)

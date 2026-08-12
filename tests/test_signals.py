@@ -1,4 +1,4 @@
-"""Tests for power_microstructure.signals modules."""
+"""Tests for power_coupling.signals modules."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from power_microstructure.signals import ForecastErrorSignal, SpreadConstructor
+from power_coupling.signals import ForecastErrorSignal, SpreadConstructor
 
 
 class TestForecastErrorSignal:
@@ -115,7 +115,7 @@ class TestSpreadConstructor:
     def test_regime_conditional_variance_has_expected_regimes(self, price_panel, forecast_errors):
         sc = SpreadConstructor(price_panel)
         spread = sc.id1_spread()
-        from power_microstructure.signals import ForecastErrorSignal
+        from power_coupling.signals import ForecastErrorSignal
         sig = ForecastErrorSignal(forecast_errors)
         regime = sig.regime().reindex(spread.index)
         result = sc.regime_conditional_variance(spread, regime)

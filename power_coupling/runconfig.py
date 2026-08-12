@@ -29,8 +29,8 @@ def resolve_end_date(default: str = PINNED_END) -> str:
     2. ``PM_END`` environment variable (same values)
     3. the pinned default (2026-05-04, matching the shipped artifacts)
 
-    ``live`` resolves to (today − 3 days) in Europe/Berlin — the old default,
-    which made every run date-dependent and results irreproducible.
+    ``live`` resolves to (today − 3 days) in Europe/Berlin, the old default,
+    which made every run date-dependent.
     """
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--end", default=os.environ.get("PM_END", default))

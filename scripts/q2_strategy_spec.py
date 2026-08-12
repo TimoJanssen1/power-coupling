@@ -1,9 +1,9 @@
 """
-Q2 mean-reversion strategy — specification for the DEPRECATED hourly-marks
+Q2 mean-reversion strategy: specification for the DEPRECATED hourly-marks
 backtest (``run_q2_backtest.py``).
 
-HONESTY NOTES (July 2026 revision):
-  * "Pre-registered" was the intent, but the git history cannot verify it —
+Notes (July 2026 revision):
+  * "Pre-registered" was the intent, but the git history cannot verify it:
     all code and results landed together in the repo's initial commit.
   * This spec parameterises the abandoned z-score entry/exit strategy, NOT
     the honest hold-to-delivery backtest (whose parameters are declared at

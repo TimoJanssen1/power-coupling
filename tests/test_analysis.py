@@ -1,4 +1,4 @@
-"""Tests for power_microstructure.analysis modules."""
+"""Tests for power_coupling.analysis modules."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from power_microstructure.analysis import (
+from power_coupling.analysis import (
     CointegrationAnalysis,
     GrangerAnalysis,
     StructuralBreakAnalysis,
@@ -160,14 +160,14 @@ class TestCointegrationAnalysis:
         s1, s2 = cointegrated_pair
         ca = CointegrationAnalysis(s1, s2)
         hl = ca.half_life(beta=1.0)
-        # s1-s2 is white noise; half-life is 0 (instantaneous reversion) — finite and non-negative
+        # s1-s2 is white noise; half-life is 0 (instantaneous reversion)
         assert np.isfinite(hl), f"Half-life must be finite; got {hl}"
         assert hl >= 0, f"Half-life must be non-negative; got {hl}"
 
     def test_conditional_half_life_by_regime(self, cointegrated_pair, forecast_errors):
         s1, s2 = cointegrated_pair
         ca = CointegrationAnalysis(s1, s2)
-        from power_microstructure.signals import ForecastErrorSignal
+        from power_coupling.signals import ForecastErrorSignal
         sig = ForecastErrorSignal(forecast_errors)
         regime = sig.regime().reindex(s1.index)
         result = ca.conditional_half_life(regime)

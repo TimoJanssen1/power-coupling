@@ -11,8 +11,8 @@ daily linear program over a 24-hour horizon, parameterised by:
   • the boundary state-of-charge between days
 
 Settlement convention (July 2026 revision): strategies that schedule against
-the DE/LU day-ahead price also SETTLE at the DE/LU day-ahead price — the
-schedule is committed in the DA auction and clears there. v1 settled all
+the DE/LU day-ahead price also settle at the DE/LU day-ahead price (the
+schedule is committed in the DA auction and clears there). v1 settled all
 strategies at the series then believed to be the German intraday continuous
 index; that series is in fact the Belgian day-ahead price (see FINDINGS.md
 "Revision notes"), so v1's revenue was a DE-scheduled/BE-settled hybrid.
@@ -22,16 +22,16 @@ Four strategies share the same simulator with different inputs:
     naive          Hour-of-day heuristic (charge the day's cheapest 2h,
                    discharge the richest 2h), processed chronologically so
                    energy cannot be discharged before it has been charged.
-    da_lp          LP against DE/LU DA prices, settled at DE/LU DA — what a
-                   baseline DA-auction arbitrage operator does. DA prices are
-                   known before gate closure, so this is implementable.
+    da_lp          LP against DE/LU DA prices, settled at DE/LU DA. DA prices
+                   are known before gate closure, so this is the implementable
+                   baseline.
     da_plus_tilt   LP against DA prices tilted by the Q1 forecast-error impact,
                    settled at DA. The tilt uses realised forecast errors (not
-                   knowable at gate closure), so it is an UPPER BOUND on what
-                   such a signal could add — and it adds ~nothing.
-    alt_series_lp  LP optimised AND settled on the alternative price series
+                   knowable at gate closure), so it is an upper bound on what
+                   such a signal could add, and it adds ~nothing.
+    alt_series_lp  LP optimised and settled on the alternative price series
                    passed to it. With this repo's data that series is the
-                   Belgian DA price (mislabelled "intraday" in v1) — retained
+                   Belgian DA price (mislabelled "intraday" in v1), retained
                    as a cross-zonal reference point, not a foresight ceiling.
 
 All values are EUR. Energy is MWh. Power is MW. Time is hourly.
@@ -119,7 +119,6 @@ def _solve_day_lp(
         c_obj[idx_c(t)] = prices[t]            # cost of charging
         c_obj[idx_d(t)] = -prices[t] + wear    # negative revenue + wear cost
 
-    # Bounds
     bounds = (
         [(0.0, P)] * H            # c
         + [(0.0, P)] * H          # d
@@ -140,7 +139,6 @@ def _solve_day_lp(
             A_eq[t, idx_s(t - 1)] = -1.0
 
     if soc_end_target is not None:
-        # Append an extra equality s_{H-1} = soc_end_target
         extra = np.zeros((1, nvar))
         extra[0, idx_s(H - 1)] = 1.0
         A_eq = np.vstack([A_eq, extra])
@@ -226,11 +224,11 @@ def strategy_naive(
     expensive 2 hours of the same day. No optimisation, no foresight beyond
     the calendar day. Settles at the DA price it schedules against.
 
-    Hours are processed CHRONOLOGICALLY: a "richest" hour that falls before
+    Hours are processed chronologically: a "richest" hour that falls before
     the day's "cheapest" hours can only discharge energy already in storage
-    at that time — energy cannot be discharged before it has been charged.
-    (v1 charged all cheap hours first regardless of their position in the day,
-    which allowed physically impossible discharge-before-charge schedules.)
+    at that time. (v1 charged all cheap hours first regardless of their
+    position in the day, which allowed physically impossible
+    discharge-before-charge schedules.)
 
     ``id_prices`` is recorded on the schedule for reference only.
     """
@@ -324,10 +322,10 @@ def strategy_da_only_lp(
     da_prices: pd.Series, id_prices: pd.Series, spec: BatterySpec,
 ) -> DispatchResult:
     """
-    LP optimised against DE/LU DA prices and SETTLED at DE/LU DA prices.
+    LP optimised against DE/LU DA prices and settled at DE/LU DA prices.
 
     DA auction results are published before the schedule must be firm, so
-    optimising "against DA" involves no foresight — this is the implementable
+    optimising against DA involves no foresight; this is the implementable
     baseline of a DA-auction arbitrage battery. ``id_prices`` is unused for
     cash flows (kept in the signature for a stable strategy interface).
     """
@@ -343,13 +341,13 @@ def strategy_alt_series_lp(
     da_prices: pd.Series, id_prices: pd.Series, spec: BatterySpec,
 ) -> DispatchResult:
     """
-    LP optimised AND settled on the alternative price series (``id_prices``).
+    LP optimised and settled on the alternative price series (``id_prices``).
 
-    In this repo's data that series is the BELGIAN day-ahead price (v1
+    In this repo's data that series is the Belgian day-ahead price (v1
     mislabelled it as the German intraday continuous index and treated this
     run as a "perfect foresight ceiling"). It is retained as a cross-zonal
-    reference: the same battery arbitraging a neighbouring zone's DA curve —
-    NOT a foresight ceiling for the German battery.
+    reference: the same battery arbitraging a neighbouring zone's DA curve,
+    not a foresight ceiling for the German battery.
     """
     return _strategy_lp(
         objective_prices=id_prices,
@@ -374,10 +372,10 @@ def strategy_da_plus_tilt(
     before the daily LP is solved; cash flows still settle at the actual DA
     price (the schedule is committed in the DA auction).
 
-    LOOK-AHEAD CAVEAT: fe is the REALISED forecast error, which is not
+    Look-ahead caveat: fe is the realised forecast error, which is not
     knowable at DA gate closure. The tilt therefore upper-bounds what a
-    real-time forecast-error signal could contribute to the DA schedule —
-    and empirically it contributes ~nothing (see Q3 results).
+    real-time forecast-error signal could contribute to the DA schedule;
+    empirically it contributes ~nothing (see Q3 results).
     """
     da_prices = da_prices.dropna()
     id_prices = id_prices.reindex(da_prices.index).interpolate()

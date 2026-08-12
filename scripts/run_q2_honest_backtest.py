@@ -1,22 +1,22 @@
 """
-Q2 honest backtest — day-ahead-committed zonal spread, strictly lagged signal.
+Q2 honest backtest: day-ahead-committed zonal spread, strictly lagged signal.
 
-WHAT IS ACTUALLY TRADED (July 2026 revision). The spread series is
-``id3_price − id_continuous`` — legacy column names that turn out to be the
+What is actually traded (July 2026 revision): the spread series is
+``id3_price − id_continuous``, legacy column names that turn out to be the
 Danish DK1 day-ahead price minus the Belgian day-ahead price (see the series-
-identification note in FINDINGS.md). Both legs clear SIMULTANEOUSLY in the
+identification note in FINDINGS.md). Both legs clear simultaneously in the
 single European day-ahead auction (SDAC): gate closure 12:00 CET on day t−1,
 results published ≈12:45 CET. There is no auction-vs-continuous structure and
 no 22:00 decision point in these data. (v1 described the spread as "ID3
 auction vs continuous VWAP"; the real EPEX ID3 is a volume-weighted index of
-continuous trades in the last 3 hours before delivery — an ex-post statistic,
-not an auction — and neither leg here is an intraday price at all.)
+continuous trades in the last 3 hours before delivery, an ex-post statistic,
+and neither leg here is an intraday price at all.)
 
-Timing of information, exactly:
+Timing of information:
 
   For delivery day t, both auction prices publish ≈12:45 CET on day t−1.
   The signal for day t is the trailing-90-day mean of the realised spread
-  per delivery hour, lagged one delivery day — its most recent input is the
+  per delivery hour, lagged one delivery day; its most recent input is the
   day t−1 spread, published ≈12:45 CET on day t−2. The signal is therefore
   fully observable ~23 hours before the day-t auction clears. Nothing is
   peeked at.
@@ -28,15 +28,15 @@ Timing of information, exactly:
           direction = sign(signal[h*])  # ride the trailing bias
           PnL = direction * (DK1_DA[t, h*] − BE_DA[t, h*]) − costs
 
-EXECUTABILITY CAVEAT: this is a PAPER spread. A zonal day-ahead price
-difference cannot be captured by submitting spot orders in the two zones —
-monetising it requires cross-zonal transmission rights (FTRs/interconnector
-capacity), which are not modelled here. The cost scenarios treat one leg as
-carrying a round-trip execution cost; read the results as a study of zonal-
-spread persistence, not a deployable strategy.
+Executability: this is a paper spread. A zonal day-ahead price difference
+cannot be captured by submitting spot orders in the two zones; monetising it
+requires cross-zonal transmission rights (FTRs/interconnector capacity),
+which are not modelled here. The cost scenarios treat one leg as carrying a
+round-trip execution cost. Read the results as a study of zonal-spread
+persistence, not a deployable strategy.
 
-The signal uses ONLY past observations of the trade target, with strict lag
-(previous delivery days). That part of the design is sound and unchanged.
+The signal uses only past observations of the trade target, with strict lag
+(previous delivery days).
 
 Sharpe is annualised by √252 on the daily PnL series (equity convention, kept
 from v1 for comparability); power markets clear every calendar day, so a
@@ -60,8 +60,8 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from power_microstructure.data import SmardFetcher  # noqa: E402
-from power_microstructure.runconfig import resolve_end_date  # noqa: E402
+from power_coupling.data import SmardFetcher  # noqa: E402
+from power_coupling.runconfig import resolve_end_date  # noqa: E402
 
 OUT = ROOT / "results" / "q2_backtest_honest"
 FIG = OUT / "figures"
@@ -70,10 +70,9 @@ TAB = OUT / "tables"
 START = "2018-10-01"
 
 # ---- Strategy parameters (fixed before evaluation) --------------------------
-# Honesty note: "fixed before evaluation" is a claim the git history cannot
-# verify — code and results landed together in the initial commit, and the
-# committed q2_strategy_spec.py parameterises the abandoned z-score strategy,
-# not this one.
+# "Fixed before evaluation" is a claim the git history cannot verify: code and
+# results landed together in the initial commit, and the committed
+# q2_strategy_spec.py parameterises the abandoned z-score strategy, not this one.
 ENTRY_THRESHOLD = 5.0     # |trailing_mean_spread| in EUR/MWh required to enter
 TRAINING_DAYS = 90        # rolling window of past delivery days for the signal
 N_BOOTSTRAP = 2000
@@ -174,8 +173,8 @@ def _summarise(pnl_daily: pd.Series, name: str, n_bootstrap: int):
         "sortino": round(sortino, 3),
         "max_drawdown_eur": round(float(dd), 1),
         "win_rate": round(win_rate, 3),
-        # Days on which the strategy had a position AND nonzero net PnL —
-        # "n_trades" in v1, renamed to what it actually counts.
+        # days on which the strategy had a position and nonzero net PnL;
+        # "n_trades" in v1, renamed to what it actually counts
         "n_traded_days": int((pnl_daily != 0).sum()),
         "total_pnl_eur_per_mwh": round(float(pnl_daily.sum()), 1),
         "avg_pnl_per_trade_eur_per_mwh": round(
@@ -222,7 +221,7 @@ def main() -> None:
         pd.concat(sig_blocks).sort_values(["delivery_day", "delivery_hour"]).reset_index(drop=True)
     )
 
-    # One paper trade per delivery day — pick the hour with strongest |signal|
+    # One paper trade per delivery day: pick the hour with strongest |signal|
     sig_panel["abs_signal"] = sig_panel["signal"].abs()
     picks = (
         sig_panel.dropna(subset=["abs_signal"])
@@ -240,7 +239,6 @@ def main() -> None:
     picks["gross_pnl_eur_per_mwh"] = picks["direction"] * picks["realised_spread"]
     picks["delivery_day_ts"] = pd.to_datetime(picks["delivery_day"]).dt.tz_localize("UTC")
 
-    # Apply three cost scenarios
     all_days = sorted(pd.to_datetime(sig_panel["delivery_day"].unique()))
     day_index = pd.DatetimeIndex(all_days).tz_localize("UTC")
 
@@ -259,7 +257,7 @@ def main() -> None:
 
     summary_df = pd.DataFrame([r["summary"] for r in results.values()]).set_index("scenario")
     summary_df.to_csv(TAB / "summary.csv")
-    print("\n=== Honest backtest — summary ===")
+    print("\n=== Honest backtest summary ===")
     print(summary_df.to_string())
 
     # Cumulative PnL chart
@@ -273,7 +271,7 @@ def main() -> None:
     ax.axhline(0, color="black", lw=0.5)
     ax.set_ylabel("Cumulative PnL (EUR/MWh, unit position)")
     ax.set_title(
-        "Q2 honest backtest — DK1−BE zonal DA spread (paper trade), "
+        "Q2 honest backtest: DK1−BE zonal DA spread (paper trade), "
         f"one trade/delivery day, |signal|>€{ENTRY_THRESHOLD}/MWh"
     )
     ax.legend(loc="upper left")
@@ -304,7 +302,7 @@ def main() -> None:
     ax.set_xticks(x)
     ax.set_xticklabels(years)
     ax.set_ylabel("Annual PnL (EUR/MWh, unit position)")
-    ax.set_title("Q2 honest backtest — PnL attribution by year")
+    ax.set_title("Q2 honest backtest: PnL attribution by year")
     ax.legend()
     _save(fig, "q2_honest_pnl_by_year")
 
@@ -317,7 +315,7 @@ def main() -> None:
                label=f"Realised Sharpe = {real_summary['sharpe_annualised']:.2f}")
     ax.set_xlabel("Bootstrap Sharpe (annualised)")
     ax.set_ylabel("Frequency")
-    ax.set_title(f"Bootstrap Sharpe — honest backtest, realistic costs  "
+    ax.set_title(f"Bootstrap Sharpe, honest backtest, realistic costs  "
                  f"(p={real_summary['bootstrap_p_sharpe_pos']:.3f})")
     ax.legend()
     _save(fig, "q2_honest_bootstrap_sharpe")
@@ -338,7 +336,7 @@ def main() -> None:
                     "~12:45 CET D-2 (previous day's auction publication)"
                 ),
                 "executability": (
-                    "paper spread — capturing a zonal DA price difference requires "
+                    "paper spread; capturing a zonal DA price difference requires "
                     "cross-zonal transmission rights, not modelled"
                 ),
                 "execution_costs_apply_to": "one leg (round-trip cost scenarios)",

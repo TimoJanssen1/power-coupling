@@ -1,9 +1,9 @@
 """
-Q2 walk-forward mean-reversion backtest — DEPRECATED.
+Q2 walk-forward mean-reversion backtest (DEPRECATED).
 
-This is the FICTITIOUS version superseded by ``run_q2_honest_backtest.py``:
+This is the fictitious version superseded by ``run_q2_honest_backtest.py``:
 it marks the spread series itself as tradeable at hourly prices with entries
-and exits ("4.2-hour mean hold"), which no market participant can do — the
+and exits ("4.2-hour mean hold"), which no market participant can do; the
 underlying series are day-ahead auction prices, fixed once per delivery day.
 On top of that, the spread it trades is (per the July 2026 series
 identification) the Danish DK1 day-ahead minus the Belgian day-ahead price,
@@ -32,9 +32,9 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from power_microstructure.data import SmardFetcher  # noqa: E402
-from power_microstructure.runconfig import resolve_end_date  # noqa: E402
-from power_microstructure.strategy.backtest import WalkForwardBacktest  # noqa: E402
+from power_coupling.data import SmardFetcher  # noqa: E402
+from power_coupling.runconfig import resolve_end_date  # noqa: E402
+from power_coupling.strategy.backtest import WalkForwardBacktest  # noqa: E402
 
 # Load the strategy spec by explicit file path so this script works from any
 # working directory (a bare ``from scripts.q2_strategy_spec import …`` breaks
@@ -91,7 +91,7 @@ def main() -> None:
     FIG.mkdir(exist_ok=True)
     TAB.mkdir(exist_ok=True)
 
-    print("NOTE: deprecated fictitious backtest — see module docstring.")
+    print("Deprecated fictitious backtest; see module docstring.")
     print(f"Sample window: {START} → {END}")
     print("Loading cached SMARD price panel …")
     sf = SmardFetcher()
@@ -108,7 +108,7 @@ def main() -> None:
 
     # -------------------------------------------------------------------------
     # Run three cost scenarios on the same locked spec (the "pre-registered"
-    # claim is retired — see q2_strategy_spec.py honesty notes)
+    # claim is retired; see q2_strategy_spec.py notes)
     # -------------------------------------------------------------------------
 
     results = {}
@@ -174,7 +174,7 @@ def main() -> None:
         )
     ax.axhline(0, color="black", lw=0.5)
     ax.set_ylabel("Cumulative PnL (EUR/MWh, unit position)")
-    ax.set_title("Q2 walk-forward backtest — DEPRECATED hourly-marks spec, three cost scenarios")
+    ax.set_title("Q2 walk-forward backtest (DEPRECATED hourly-marks spec), three cost scenarios")
     ax.legend(loc="upper left")
     ax.xaxis.set_major_locator(mdates.YearLocator())
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y"))
@@ -243,7 +243,7 @@ def main() -> None:
     _save_fig(fig, "q2_pnl_by_year")
 
     # -------------------------------------------------------------------------
-    # Bootstrap distribution of Sharpe — realistic scenario
+    # Bootstrap distribution of Sharpe, realistic scenario
     # -------------------------------------------------------------------------
 
     real = results["realistic"]

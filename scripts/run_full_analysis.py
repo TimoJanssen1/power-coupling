@@ -34,13 +34,13 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from power_microstructure.analysis.cointegration import CointegrationAnalysis  # noqa: E402
-from power_microstructure.analysis.granger import GrangerAnalysis  # noqa: E402
-from power_microstructure.analysis.structural import StructuralBreakAnalysis  # noqa: E402
-from power_microstructure.data import EntsoeFetcher, SmardFetcher  # noqa: E402
-from power_microstructure.runconfig import resolve_end_date  # noqa: E402
-from power_microstructure.signals.forecast_error import ForecastErrorSignal  # noqa: E402
-from power_microstructure.signals.spread import SpreadConstructor  # noqa: E402
+from power_coupling.analysis.cointegration import CointegrationAnalysis  # noqa: E402
+from power_coupling.analysis.granger import GrangerAnalysis  # noqa: E402
+from power_coupling.analysis.structural import StructuralBreakAnalysis  # noqa: E402
+from power_coupling.data import EntsoeFetcher, SmardFetcher  # noqa: E402
+from power_coupling.runconfig import resolve_end_date  # noqa: E402
+from power_coupling.signals.forecast_error import ForecastErrorSignal  # noqa: E402
+from power_coupling.signals.spread import SpreadConstructor  # noqa: E402
 
 warnings.filterwarnings("ignore")
 plt.rcParams.update(
@@ -110,20 +110,16 @@ def load_data():
 
 
 # ============================================================================
-# Q1 — Forecast errors and the price series (BE day-ahead, legacy 'intraday')
+# Q1: forecast errors and the price series (BE day-ahead, legacy 'intraday')
 # ============================================================================
 
 
 def run_q1(errors: pd.DataFrame, panel: pd.DataFrame, rshare: pd.Series):
-    print("\n" + "=" * 70 + "\nQ1 — Forecast errors and prices\n" + "=" * 70)
+    print("\n" + "=" * 70 + "\nQ1: Forecast errors and prices\n" + "=" * 70)
 
-    # Price series: the panel's "id_continuous" column. SERIES NOTE (July 2026):
-    # this is the BELGIAN day-ahead price (SMARD filter 4996), not a German
-    # intraday index as v1 believed. A day-ahead price is fixed at ~12:00 D-1,
-    # BEFORE the delivery-hour forecast error realises, so any fe → price
-    # predictability here runs through error persistence into later auctions
-    # (plus common drivers) — not through intraday clearing of imbalances.
-    # See FINDINGS.md "Revision notes".
+    # "id_continuous" is the Belgian day-ahead price (SMARD 4996), not a German
+    # intraday index as v1 believed; see FINDINGS.md "Revision notes" for what
+    # that does to the fe → price interpretation.
     price = panel["id_continuous"].dropna()
     fe = errors["total_error"]
 
@@ -143,9 +139,7 @@ def run_q1(errors: pd.DataFrame, panel: pd.DataFrame, rshare: pd.Series):
     for col in ann_std.columns:
         ax.plot(ann_std.index, ann_std[col], marker="o", label=col)
     ax.set_ylabel("σ of forecast error  (MW)")
-    ax.set_title(
-        "Forecast-error volatility by year — wind dominates, growing with capacity"
-    )
+    ax.set_title("Forecast-error volatility by year")
     ax.legend()
     _save_fig(fig, "q1_yearly_error_std")
 
@@ -244,14 +238,14 @@ def run_q1(errors: pd.DataFrame, panel: pd.DataFrame, rshare: pd.Series):
     # Per-hour β: use first-difference price (= price impact of fe per hour)
     pc = price_aligned.diff().dropna()
     fe_pc = fe_aligned.loc[pc.index]
-    # Down-sample to daily mean to keep T tractable AND interpret breaks at day-level
+    # Down-sample to daily mean to keep T tractable and interpret breaks at day-level
     daily = pd.DataFrame({"y": pc, "x": fe_pc}).resample("D").mean().dropna()
     sba = StructuralBreakAnalysis(
         daily["y"], daily["x"], max_breaks=4, trim=0.15, alpha=0.05
     )
     bp = sba.fit()
     print(
-        f"  Bai-Perron: detected {bp.n_breaks} break(s) — {[d.date() for d in bp.break_dates]}"
+        f"  Bai-Perron: detected {bp.n_breaks} break(s): {[d.date() for d in bp.break_dates]}"
     )
     SUMMARY["q1_bai_perron"] = {
         "n_breaks": int(bp.n_breaks),
@@ -291,12 +285,12 @@ def run_q1(errors: pd.DataFrame, panel: pd.DataFrame, rshare: pd.Series):
 
 
 # ============================================================================
-# Q2 — Zonal day-ahead spreads (legacy framing: auction vs continuous)
+# Q2: zonal day-ahead spreads (legacy framing: auction vs continuous)
 # ============================================================================
 
 
 def run_q2(errors: pd.DataFrame, panel: pd.DataFrame):
-    print("\n" + "=" * 70 + "\nQ2 — Zonal day-ahead spreads\n" + "=" * 70)
+    print("\n" + "=" * 70 + "\nQ2: Zonal day-ahead spreads\n" + "=" * 70)
 
     out = {}
     sc = SpreadConstructor(panel)
@@ -329,10 +323,10 @@ def run_q2(errors: pd.DataFrame, panel: pd.DataFrame):
 
     # ---- 2.2 Cointegration --------------------------------------------------------
     # Heavy stats (ADF autolag, Johansen with k_ar_diff selection, VECM) are O(T·p)
-    # to O(T²) — at T=66k each call takes hours and can hang in numerical edge
-    # cases. We trim to the most recent 3 years (≈26k obs) for the formal tests
-    # and report a separate AR(1) half-life over the FULL sample so we don't lose
-    # the long-run mean-reversion picture.
+    # to O(T²); at T=66k each call takes hours and can hang in numerical edge
+    # cases. So: most recent 3 years (≈26k obs) for the formal tests, plus a
+    # separate AR(1) half-life over the full sample to keep the long-run
+    # mean-reversion picture.
     test_window = pd.Timestamp(END, tz="UTC") - pd.Timedelta(days=3 * 365)
     print(f"  cointegration tests on most recent 3y subsample (≥ {test_window.date()})")
 
@@ -347,13 +341,13 @@ def run_q2(errors: pd.DataFrame, panel: pd.DataFrame):
         # Restrict to recent 3y for the heavy tests
         joined = joined[joined.index >= test_window]
         if len(joined) < 1000:
-            print(f"  [{label}] only {len(joined)} aligned obs in window — skipped")
+            print(f"  [{label}] only {len(joined)} aligned obs in window, skipped")
             continue
         # Down-sample to daily for the formal tests so ADF autolag doesn't blow
-        # up. DISCLOSURE: ADF/KPSS, Engle-Granger, Johansen and the VECM below
-        # therefore run on DAILY means (n ≈ 1,100), not hourly data — and the
-        # VECM alpha loadings are in PER-DAY units. Only the AR(1) half-life
-        # further down uses the full hourly sample (units: hours).
+        # up. ADF/KPSS, Engle-Granger, Johansen and the VECM below therefore run
+        # on daily means (n ≈ 1,100), not hourly data, and the VECM alpha
+        # loadings are in per-day units. Only the AR(1) half-life further down
+        # uses the full hourly sample (units: hours).
         daily = joined.resample("1D").mean().dropna()
         ca_daily = CointegrationAnalysis(daily.iloc[:, 0], daily.iloc[:, 1])
         ca_full = CointegrationAnalysis(joined.iloc[:, 0], joined.iloc[:, 1])
@@ -389,7 +383,7 @@ def run_q2(errors: pd.DataFrame, panel: pd.DataFrame):
             alpha, beta_v = None, None
 
         # Half-life is the figure that makes physical sense at hourly granularity.
-        # Compute it on the FULL hourly sample (cheap — closed-form AR(1) regression).
+        # Compute it on the full hourly sample (cheap: closed-form AR(1) regression).
         try:
             half_life = ca_full.half_life(beta=1.0)
         except Exception as e:
@@ -486,12 +480,12 @@ def run_q2(errors: pd.DataFrame, panel: pd.DataFrame):
 
 
 # ============================================================================
-# Q3 — Shape spread (hourly vs quarter-hourly)
+# Q3: shape spread (hourly vs quarter-hourly)
 # ============================================================================
 
 
 def run_q3(errors: pd.DataFrame, panel: pd.DataFrame, qh: pd.Series):
-    print("\n" + "=" * 70 + "\nQ3 — 'Shape spread' (BE hourly vs Anrainer QH)\n" + "=" * 70)
+    print("\n" + "=" * 70 + "\nQ3: 'Shape spread' (BE hourly vs Anrainer QH)\n" + "=" * 70)
 
     sc = SpreadConstructor(panel, qh_prices=qh)
     shape = sc.shape_spread().dropna()
@@ -535,7 +529,7 @@ def run_q3(errors: pd.DataFrame, panel: pd.DataFrame, qh: pd.Series):
     ax.set_xlabel("hour of day (CET)")
     ax.set_ylabel("shape spread  (EUR/MWh)")
     ax.set_title(
-        "Q3: 'shape spread' by hour-of-day — BE hourly DA minus 'Anrainer DE/LU' QH mean\n"
+        "Q3: 'shape spread' by hour-of-day: BE hourly DA minus 'Anrainer DE/LU' QH mean\n"
         "(cross-zonal spread; QH leg carries no intra-hour variation before Oct 2025)"
     )
     ax.legend(loc="upper right")

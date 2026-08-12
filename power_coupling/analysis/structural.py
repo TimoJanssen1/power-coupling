@@ -1,24 +1,17 @@
 """
 Structural break detection via the Bai-Perron (1998, 2003) sequential procedure.
 
-This module tests whether the Granger-causal relationship between renewable
-forecast errors and power prices has strengthened as German renewable
-penetration has grown (hypothesis: break dates should align with capacity additions).
+Tests whether the relationship between renewable forecast errors and power
+prices has strengthened as German renewable penetration has grown
+(hypothesis: break dates should align with capacity additions).
 
-Methodology
------------
-The Bai-Perron procedure allows for multiple unknown breakpoints in a linear
-regression model.  We apply it to the bivariate model:
+The Bai-Perron procedure allows multiple unknown breakpoints in a linear
+regression model, here the bivariate
 
     price_change_t = α_k + β_k · forecast_error_t + ε_t
 
-where k indexes the regime between breakpoints.
-
-Steps:
-  1. Bai-Perron sequential F-test (supF) to detect the number of breaks.
-  2. Dynamic programming to locate break dates conditional on the number.
-  3. Confidence intervals for break dates (from Bai 1997).
-  4. Plot break dates vs. German renewable capacity additions.
+where k indexes the regime between breakpoints. A sequential supF test picks
+the number of breaks; dynamic programming locates them.
 
 Trimming parameter ε = 0.15 (each segment has at least 15% of observations).
 
@@ -186,12 +179,8 @@ class StructuralBreakAnalysis:
     # ------------------------------------------------------------------
 
     def fit(self) -> BreakResult:
-        """
-        Run the full Bai-Perron sequential procedure.
-
-        Returns BreakResult with detected break dates and per-segment estimates.
-        """
-        # Sequential test: add breaks one at a time until supF is not significant
+        """Run the sequential Bai-Perron procedure."""
+        # add breaks one at a time until supF is not significant
         detected_breaks = 0
         all_supF = []
         all_pvalues = []
@@ -206,14 +195,10 @@ class StructuralBreakAnalysis:
                 break  # sequential procedure stops at first non-rejection
 
         if detected_breaks == 0:
-            # No structural breaks detected
             return self._no_break_result(all_supF, all_pvalues)
 
-        # Locate breaks using dynamic programming (global minimum RSS)
         break_indices = self._locate_breaks(detected_breaks)
         break_dates = [self.index[i] for i in break_indices]
-
-        # Estimate per-segment regressions
         segments = self._segment_estimates(break_indices)
 
         return BreakResult(
@@ -238,17 +223,16 @@ class StructuralBreakAnalysis:
         Compute supF(m) = sup over all valid partition points of the F-statistic
         testing m breaks against m-1 breaks.
 
-        Each additional break frees TWO parameters (the segment intercept alpha
-        AND the slope beta both shift), so q = 2 restrictions per break.
+        Each additional break frees two parameters (segment intercept and
+        slope both shift), so q = 2 restrictions per break.
 
-        P-VALUE CAVEAT: the p-value below evaluates the sup-statistic against a
-        pointwise F(2, .) reference distribution. The supremum of thousands of
-        correlated F-statistics is NOT F-distributed — its true critical values
+        Caveat: the p-value below evaluates the sup-statistic against a
+        pointwise F(2, .) reference. The supremum of thousands of correlated
+        F-statistics is not F-distributed; the true critical values
         (Bai & Perron 1998, Table 1) are substantially larger, so this p-value
-        is ANTI-conservative: it overstates significance. It is used here only
-        to order candidate break counts in the sequential procedure; calibrated
-        inference would require the Bai-Perron asymptotic critical values,
-        which are not implemented.
+        overstates significance. It is only used to order candidate break
+        counts in the sequential procedure; calibrated inference would need
+        the Bai-Perron asymptotic critical values, which are not implemented.
         """
         rss_null = self._rss_segment(0, self.T - 1)
         min_seg = self._min_seg
@@ -279,8 +263,8 @@ class StructuralBreakAnalysis:
                     candidate_f.append(max(f, 0))
             supF = float(max(candidate_f)) if candidate_f else 0.0
 
-        # Heuristic p-value against a pointwise F(q, df2) reference — see the
-        # docstring caveat: this OVERSTATES significance for a sup-statistic.
+        # heuristic p-value against a pointwise F(q, df2) reference; overstates
+        # significance for a sup-statistic (see docstring caveat)
         df1 = q
         df2 = max(self.T - 2 * (m + 1), 1)
         pval = float(1 - stats.f.cdf(supF, df1, df2))
@@ -296,7 +280,7 @@ class StructuralBreakAnalysis:
 
         Memory: O(T · m).  Time: O(T² · m), vectorised in numpy along the
         candidate breakpoint axis.  Uses the prefix-sum OLS helper for O(1)
-        RSS queries — the legacy O(T²) ``rss_mat`` matrix is gone, so the
+        RSS queries; the legacy O(T²) ``rss_mat`` matrix is gone, so the
         large-T greedy fallback is no longer auto-routed.
 
         Returns list of m break indices (0-based, last obs in each segment
@@ -342,7 +326,7 @@ class StructuralBreakAnalysis:
         for k in range(m, 0, -1):
             bp = int(opt_break[t, k])
             if bp < 0:
-                # No feasible partition with k breaks — fall back to greedy
+                # no feasible partition with k breaks: fall back to greedy
                 return self._locate_breaks_approx(m)
             breaks.append(bp)
             t = bp
@@ -396,10 +380,10 @@ class StructuralBreakAnalysis:
 
     def _rss_segment(self, start: int, end: int) -> float:
         """
-        Residual sum of squares for OLS: y ~ α + β·x over [start, end].
+        RSS for OLS y ~ α + β·x over [start, end].
 
-        Delegates to the prefix-sum helper so all RSS queries — supF test,
-        DP location, approximate fallback — share the same numerics in O(1).
+        Delegates to the prefix-sum helper so all RSS queries (supF test,
+        DP location, approximate fallback) share the same numerics in O(1).
         """
         return self._pref.rss(start, end)
 

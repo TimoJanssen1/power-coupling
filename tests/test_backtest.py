@@ -1,4 +1,4 @@
-"""Tests for power_microstructure.strategy.backtest."""
+"""Tests for power_coupling.strategy.backtest."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from power_microstructure.strategy import BacktestResult, WalkForwardBacktest
+from power_coupling.strategy import BacktestResult, WalkForwardBacktest
 
 
 @pytest.fixture
@@ -23,7 +23,7 @@ def stationary_spread(hourly_index, rng):
 
 @pytest.fixture
 def random_walk_spread(hourly_index, rng):
-    """Non-mean-reverting (random walk) spread — should not show consistent profit."""
+    """Non-mean-reverting (random walk) spread; should not show consistent profit."""
     return pd.Series(
         np.cumsum(rng.normal(0, 1, size=len(hourly_index))), index=hourly_index, name="spread"
     )
@@ -122,7 +122,7 @@ class TestWalkForwardBacktest:
 
     def test_no_negative_price_handling_crashes(self, price_panel):
         """Spread constructed from panel with negative prices should not crash."""
-        from power_microstructure.signals import SpreadConstructor
+        from power_coupling.signals import SpreadConstructor
         sc = SpreadConstructor(price_panel)
         spread = sc.id1_spread().dropna()
         bt = WalkForwardBacktest(spread, train_months=6, test_months=3, n_bootstrap=50)

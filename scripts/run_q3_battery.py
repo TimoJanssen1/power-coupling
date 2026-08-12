@@ -10,9 +10,9 @@ in DE/LU over the full 2018-10 → 2026-05 sample. Runs four strategies:
                     (the implementable baseline)
     da_plus_tilt    DA + Q1 forecast-error tilt, settled at DA (the tilt uses
                     realised fe → upper bound on such a signal's value)
-    alt_series_lp   LP optimised AND settled on the Belgian DA series
-                    (mislabelled "intraday"/"perfect foresight" in v1) —
-                    a cross-zonal reference, NOT a foresight ceiling
+    alt_series_lp   LP optimised and settled on the Belgian DA series
+                    (mislabelled "intraday"/"perfect foresight" in v1):
+                    a cross-zonal reference, not a foresight ceiling
 
 Settlement note (July 2026 revision): v1 settled every strategy at the series
 it believed to be the German intraday continuous index; that series is the
@@ -40,9 +40,9 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from power_microstructure.data import EntsoeFetcher, SmardFetcher  # noqa: E402
-from power_microstructure.runconfig import resolve_end_date  # noqa: E402
-from power_microstructure.strategy.battery import (  # noqa: E402
+from power_coupling.data import EntsoeFetcher, SmardFetcher  # noqa: E402
+from power_coupling.runconfig import resolve_end_date  # noqa: E402
+from power_coupling.strategy.battery import (  # noqa: E402
     BatterySpec,
     run_all_strategies,
 )
@@ -111,7 +111,7 @@ def main() -> None:
           f"η_round_trip={spec.eta_round_trip:.2f}, wear={spec.wear_eur_per_mwh} €/MWh")
 
     # Run all strategies
-    print("\nRunning all strategies (the slow step — daily LP × ~2 700 days × 3 LP strategies) …")
+    print("\nRunning all strategies (the slow step: daily LP × ~2 700 days × 3 LP strategies) …")
     results = run_all_strategies(da, alt, fe, spec)
 
     # Headline summary
@@ -174,7 +174,7 @@ def main() -> None:
     ax.set_xticklabels(years)
     ax.set_ylabel("Annual revenue  (M EUR)")
     ax.set_title(
-        f"BESS annual revenue by strategy  —  {spec.power_mw:.0f} MW / {spec.energy_mwh:.0f} MWh"
+        f"BESS annual revenue by strategy  ({spec.power_mw:.0f} MW / {spec.energy_mwh:.0f} MWh)"
     )
     ax.legend(loc="upper left")
     _save(fig, "q3_annual_revenue")
@@ -217,7 +217,7 @@ def main() -> None:
                 label=f"{strat}  (€{results[strat].revenue_eur/1e6:.1f}M total)")
     ax.set_ylabel("Cumulative revenue (M EUR)")
     ax.set_title(
-        f"BESS cumulative revenue  —  {spec.power_mw:.0f} MW / {spec.energy_mwh:.0f} MWh"
+        f"BESS cumulative revenue  ({spec.power_mw:.0f} MW / {spec.energy_mwh:.0f} MWh)"
     )
     ax.legend(loc="upper left")
     ax.xaxis.set_major_locator(mdates.YearLocator())

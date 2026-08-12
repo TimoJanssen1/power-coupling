@@ -2,11 +2,11 @@
 Granger causality analysis: renewable forecast errors → power prices.
 
 (In this repo the price leg is the Belgian day-ahead series carried under the
-legacy column name "id_continuous" — see FINDINGS.md "Revision notes".)
+legacy column name "id_continuous"; see FINDINGS.md "Revision notes".)
 
 Methodology
 -----------
-1. Lag selection via AIC (Akaike Information Criterion) over a candidate range.
+1. Lag selection via AIC over a candidate range.
 2. VAR(p) estimation on [forecast_error, price_change] pairs.
 3. Granger F-test with Bonferroni correction for multiple delivery periods.
 4. Impulse Response Functions (IRF) with bootstrap confidence bands.
@@ -190,7 +190,6 @@ class GrangerAnalysis:
                 data[["price", "fe"]], maxlag=optimal_lag, verbose=False
             )
 
-        # Extract F-stat from the optimal lag result
         f_stat, p_val, df_denom, df_num = gc_results[optimal_lag][0]["ssr_ftest"]
         p_bonferroni = min(p_val * n_tests, 1.0)
 
@@ -207,7 +206,7 @@ class GrangerAnalysis:
         )
 
     def test_reverse(self, n_tests: int = 1) -> GrangerResult:
-        """Test: price Granger-causes forecast_error (should be rejected — sanity check)."""
+        """Sanity check: price should not Granger-cause forecast_error."""
         fe, price, _ = self.prepare_stationary()
         optimal_lag, aic_values = self.aic_lag_selection(fe, price)
 
@@ -243,7 +242,7 @@ class GrangerAnalysis:
 
         Confidence bands come from a residual bootstrap (percentile method,
         5th/95th): estimated residuals are resampled i.i.d. with replacement,
-        a synthetic sample of the SAME length as the data is rebuilt through
+        a synthetic sample of the same length as the data is rebuilt through
         the fitted VAR recursion (initialised with the actual first p
         observations), the VAR is re-estimated on it, and the orthogonalised
         IRF recomputed. Replications that fail to re-estimate are dropped and
@@ -266,8 +265,8 @@ class GrangerAnalysis:
 
         # Point IRF (Cholesky-orthogonalized: fe first, price second)
         irf_obj = var_result.irf(horizon)
-        # Shape: (horizon+1, 2, 2) — [period, variable_idx, shock_idx]
-        # We want: response of price (idx 1) to shock in fe (idx 0)
+        # orth_irfs shape (horizon+1, 2, 2) = [period, variable_idx, shock_idx];
+        # we want the response of price (idx 1) to a shock in fe (idx 0)
         irf_point = irf_obj.orth_irfs[:, 1, 0]
 
         # Variance decomposition. statsmodels' FEVD .decomp shape varies by
@@ -278,7 +277,7 @@ class GrangerAnalysis:
         decomp = np.asarray(fevd.decomp)
         price_decomp: np.ndarray
         if decomp.ndim == 3 and decomp.shape[0] == 2 and decomp.shape[2] == 2:
-            # (neqs, periods, neqs) — price equation index = 1
+            # (neqs, periods, neqs); price equation index = 1
             price_decomp = decomp[1, :, :]
         elif decomp.ndim == 3 and decomp.shape[1] == 2 and decomp.shape[2] == 2:
             # (periods, neqs, neqs)
@@ -327,7 +326,7 @@ class GrangerAnalysis:
         if n_failed > 0.05 * B:
             raise RuntimeError(
                 f"IRF residual bootstrap: {n_failed}/{B} replications failed to "
-                "re-estimate — confidence bands would be unreliable."
+                "re-estimate; confidence bands would be unreliable."
             )
         if n_failed:
             logger.warning(
@@ -355,11 +354,8 @@ class GrangerAnalysis:
         step: int = 168,     # step weekly
     ) -> pd.Series:
         """
-        Rolling Granger p-value over time.
-
-        Used to assess whether the forecast_error → price relationship has
-        strengthened as German renewable penetration increased over the sample.
-        Low p-values over time → relationship is structural, not spurious.
+        Rolling Granger p-value over time; used to check whether the
+        fe → price relationship strengthened as renewable penetration grew.
         """
         fe, price, _ = self.prepare_stationary()
         data = pd.concat([fe.rename("fe"), price.rename("price")], axis=1).dropna()
@@ -390,18 +386,10 @@ class GrangerAnalysis:
         price_by_period: dict[str, pd.Series],
     ) -> pd.DataFrame:
         """
-        Run Granger test for each delivery period in price_by_period.
-
-        Applies Bonferroni correction across all tests.
-
-        Parameters
-        ----------
-        price_by_period : dict mapping label → price series
-            e.g. {"hour_10": series_10, "hour_11": series_11, ...}
-
-        Returns
-        -------
-        DataFrame with one row per period, sorted by p-value.
+        Run the Granger test per delivery period (Bonferroni-corrected across
+        all of them). price_by_period maps label → price series, e.g.
+        {"hour_10": series_10, ...}. Returns one row per period, sorted by
+        p-value.
         """
         n = len(price_by_period)
         rows = []

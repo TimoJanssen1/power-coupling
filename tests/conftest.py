@@ -1,9 +1,8 @@
 """
-Shared fixtures for the power_microstructure test suite.
+Shared fixtures for the power_coupling test suite.
 
-All fixtures use synthetic data so tests run without API keys or network access.
-The synthetic series are designed to have known statistical properties that allow
-us to test that our analysis modules produce the correct output.
+All fixtures use synthetic data so tests run without API keys or network
+access. The series have known statistical properties the tests can check.
 """
 
 from __future__ import annotations

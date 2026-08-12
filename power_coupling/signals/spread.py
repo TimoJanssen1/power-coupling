@@ -1,8 +1,8 @@
 """
 Spread construction and decomposition.
 
-NOTE ON SERIES IDENTITY (July 2026 revision): the SMARD price panel this module
-consumes carries LEGACY column names from v1's misidentification of the SMARD
+Series identity (July 2026 revision): the SMARD price panel this module
+consumes carries legacy column names from v1's misidentification of the SMARD
 filter codes. What the spreads actually are:
 
   "da_id_spread"  = DE/LU day-ahead − Belgian day-ahead      (cross-zonal DA spread)
@@ -17,7 +17,7 @@ filter codes. What the spreads actually are:
 None of these is an auction-vs-continuous or hourly-vs-QH microstructure spread;
 see FINDINGS.md "Revision notes" for how this changes the interpretation.
 
-Negative prices are preserved — they are a structural feature of European power
+Negative prices are preserved: they are a structural feature of European power
 markets during high-renewable/low-demand periods and must not be winsorized away.
 """
 
@@ -37,7 +37,7 @@ class SpreadConstructor:
         Must contain columns: da_price, id1_price, id3_price, id_continuous.
         UTC-aware DatetimeIndex, hourly frequency.
     qh_prices : pd.Series, optional
-        Quarter-hourly price series for the shape spread (Q3) — in this repo
+        Quarter-hourly price series for the shape spread (Q3): in this repo
         the "Anrainer DE/LU" day-ahead series (legacy name id_continuous_qh).
         UTC-aware DatetimeIndex, 15-min frequency.
     """
@@ -48,7 +48,7 @@ class SpreadConstructor:
         self.qh_prices = qh_prices.copy() if qh_prices is not None else None
 
     # ------------------------------------------------------------------
-    # Q2 — Cross-zonal DA spreads (legacy "auction/continuous" names)
+    # Q2: cross-zonal DA spreads (legacy "auction/continuous" names)
     # ------------------------------------------------------------------
 
     def id1_spread(self) -> pd.Series:
@@ -57,9 +57,9 @@ class SpreadConstructor:
         sample because SMARD filter 251 does not exist (the fetcher's weekly
         requests all 404). Kept only so the spread-panel schema is stable.
 
-        (Historical note: the real EPEX ID1 is a volume-weighted index of
-        continuous trades in the last hour before delivery — an ex-post
-        statistic, not an auction price, and not available from SMARD.)
+        (The real EPEX ID1 is a volume-weighted index of continuous trades in
+        the last hour before delivery: an ex-post statistic, not an auction
+        price, and not available from SMARD.)
         """
         spread = self.panel["id1_price"] - self.panel["id_continuous"]
         return spread.rename("id1_spread")
@@ -68,7 +68,7 @@ class SpreadConstructor:
         """
         Danish DK1 day-ahead price minus Belgian day-ahead price for the same
         delivery hour (legacy name "id3_spread"). A cross-zonal spread between
-        two zones coupled to DE/LU in the single day-ahead auction — both legs
+        two zones coupled to DE/LU in the single day-ahead auction; both legs
         clear simultaneously at ~12:00 D-1.
         """
         spread = self.panel["id3_price"] - self.panel["id_continuous"]
@@ -88,7 +88,7 @@ class SpreadConstructor:
         })
 
     # ------------------------------------------------------------------
-    # Q3 — Shape spread (hourly vs. quarter-hourly)
+    # Q3: shape spread (hourly vs. quarter-hourly)
     # ------------------------------------------------------------------
 
     def shape_spread(self) -> pd.Series:
@@ -117,7 +117,7 @@ class SpreadConstructor:
         return spread.rename("shape_spread")
 
     def shape_spread_by_hour(self) -> pd.DataFrame:
-        """Shape spread decomposed by hour of day — captures intra-day structure."""
+        """Shape spread stats by hour of day."""
         ss = self.shape_spread()
         df = ss.to_frame()
         df["hour"] = df.index.hour
@@ -127,8 +127,8 @@ class SpreadConstructor:
         """
         Intra-hour standard deviation of the QH price series.
 
-        CAVEAT: with this repo's data the QH series is hourly-replicated before
-        the 15-minute MTU go-live (Oct 2025), so this statistic is identically
+        With this repo's data the QH series is hourly-replicated before the
+        15-minute MTU go-live (Oct 2025), so this statistic is identically
         zero for ~91% of the sample and only becomes informative afterwards.
         """
         if self.qh_prices is None:
@@ -146,7 +146,7 @@ class SpreadConstructor:
         Model: ΔS_t = α + β·S_{t-1} + ε_t
         Half-life = −ln(2) / ln(1 + β)
 
-        Returns half-life in hours. Negative = diverging (non-mean-reverting).
+        Returns half-life in hours (inf if non-mean-reverting).
         """
         s = spread.dropna()
         ds = s.diff().dropna()
@@ -182,8 +182,8 @@ class SpreadConstructor:
         """
         Binary flag: 1 when any auction price is negative.
 
-        European day-ahead auctions clear negative during high renewable / low demand.
-        These are NOT outliers — they are structural. Flag them for conditional analysis.
+        Day-ahead auctions clear negative during high renewable / low demand;
+        structural, not outliers. Flagged for conditional analysis.
         """
         neg = (
             (self.panel["id1_price"] < 0) |
@@ -198,14 +198,9 @@ class SpreadConstructor:
         regime: pd.Series,
     ) -> pd.DataFrame:
         """
-        Spread variance conditioned on a discrete regime variable.
-
-        Parameters
-        ----------
-        spread  : pd.Series
-        regime  : pd.Series of integers (e.g. 0=low, 1=med, 2=high uncertainty)
-
-        Returns DataFrame indexed by regime with spread variance and observation count.
+        Spread variance conditioned on a discrete regime variable
+        (regime: integer series, e.g. 0=low, 1=med, 2=high uncertainty).
+        Returns a DataFrame indexed by regime.
         """
         df = pd.DataFrame({"spread": spread, "regime": regime}).dropna()
         return df.groupby("regime")["spread"].agg(["var", "std", "mean", "count"])

@@ -1,4 +1,4 @@
-"""Tests for power_microstructure.strategy.battery."""
+"""Tests for power_coupling.strategy.battery."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from power_microstructure.strategy import (
+from power_coupling.strategy import (
     BatterySpec,
     strategy_alt_series_lp,
     strategy_da_only_lp,

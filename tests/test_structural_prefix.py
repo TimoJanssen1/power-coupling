@@ -25,7 +25,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from power_microstructure.analysis.structural import (
+from power_coupling.analysis.structural import (
     StructuralBreakAnalysis,
     _PrefixOLS,
 )
@@ -221,7 +221,7 @@ def test_large_T_runs_in_budget():
         f"\nT={T}  m=2  exact-DP  elapsed={elapsed:.2f}s  ΔRSS≈{delta_mb:.1f} MB  breaks={breaks}"
     )
 
-    assert elapsed < 60.0, f"Exact DP took {elapsed:.1f}s — slower than budget."
+    assert elapsed < 60.0, f"Exact DP took {elapsed:.1f}s, slower than budget."
     # Memory: prefix arrays are ~5·8·T bytes ≈ 800 KB; DP table 2·8·T bytes
     # ≈ 320 KB; bp arrays per t are ≤ T integers.  Peak should stay well
     # under the legacy 3.2 GB rss_mat.  We assert a generous 500 MB ceiling

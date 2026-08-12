@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from power_microstructure.analysis import GrangerAnalysis
+from power_coupling.analysis import GrangerAnalysis
 
 
 @pytest.fixture
@@ -47,7 +47,7 @@ class TestIRFResidualBootstrap:
             f"upper band below point IRF: {res.irf - res.irf_upper}"
         )
         # Bands must have positive width (a degenerate bootstrap would collapse
-        # onto the point estimate — the old silent-fallback failure mode)
+        # onto the point estimate, the old silent-fallback failure mode)
         assert (res.irf_upper - res.irf_lower).max() > 1e-6
 
     def test_known_effect_detected_at_lag_one(self, var_pair):

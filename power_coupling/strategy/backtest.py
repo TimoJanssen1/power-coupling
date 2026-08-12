@@ -1,25 +1,23 @@
 """
 Walk-forward backtest engine for spread mean-reversion strategies (hourly marks).
 
-NOTE (July 2026): this engine enters/exits at hourly observations of the
-spread. With this repo's data the spread legs are zonal DAY-AHEAD prices,
-fixed once per delivery day, so hourly marking is fictitious — its only
-in-repo consumer is the deprecated ``scripts/run_q2_backtest.py`` (see
-``results/deprecated_q2_backtest_hourly_marks/DEPRECATED.md``). The honest
+July 2026: this engine enters/exits at hourly observations of the spread.
+With this repo's data the spread legs are zonal day-ahead prices, fixed once
+per delivery day, so hourly marking is fictitious. Its only in-repo consumer
+is the deprecated ``scripts/run_q2_backtest.py`` (see
+``results/deprecated_q2_backtest_hourly_marks/DEPRECATED.md``); the honest
 Q2 backtest lives in ``scripts/run_q2_honest_backtest.py``.
 
-Design principles
------------------
-- Walk-forward ONLY.  No look-ahead bias: signals, thresholds, and model parameters
-  are estimated on the training window, then applied to the out-of-sample test window.
+Design
+------
+- Walk-forward only: signals, thresholds, and model parameters are estimated
+  on the training window, then applied to the out-of-sample test window.
 - Transaction costs are explicit:
     - EPEX exchange fee: ~€0.03/MWh (midpoint of published €0.02–€0.04 range)
-    - Market impact: estimated as 0.1 × σ_bid_ask (conservative linear model)
+    - Market impact: 0.1 × σ_bid_ask (linear model)
     - Round-trip cost = 2 × (exchange_fee + impact)
-- Negative prices are handled correctly (they are not outliers; a spread can be
-  profitable or a loss in either direction).
-- Performance metrics: Sharpe ratio, max drawdown, win rate, and bootstrap p-value
-  on Sharpe to confirm it is not sampling luck.
+- Negative prices are valid; a spread can pay off in either direction.
+- Metrics: Sharpe, Sortino, max drawdown, win rate, bootstrap p-value on Sharpe.
 
 Strategy logic (Q2 spread mean-reversion)
 ------------------------------------------
@@ -31,7 +29,7 @@ Strategy logic (Q2 spread mean-reversion)
 
 Usage
 -----
->>> from power_microstructure.strategy import WalkForwardBacktest
+>>> from power_coupling.strategy import WalkForwardBacktest
 >>> bt = WalkForwardBacktest(spread, train_months=12, test_months=3)
 >>> result = bt.run(entry_z=2.0, exit_z=0.5, max_hold=24)
 >>> print(result.sharpe, result.bootstrap_pvalue)
@@ -188,7 +186,7 @@ class WalkForwardBacktest:
             fold_dates.append((test_spread.index[0], test_spread.index[-1]))
 
         if not all_pnl:
-            raise RuntimeError("No folds produced any PnL — check data coverage.")
+            raise RuntimeError("No folds produced any PnL; check data coverage.")
 
         pnl = pd.concat(all_pnl).sort_index()
         trades = pd.concat(all_trades).reset_index(drop=True) if all_trades else pd.DataFrame()
@@ -254,7 +252,6 @@ class WalkForwardBacktest:
 
         for t in range(n):
             if position == 0:
-                # Check entry
                 if zs[t] < -entry_z:
                     position = 1
                     entry_price = prices[t]
@@ -347,8 +344,7 @@ class WalkForwardBacktest:
 
         Training windows are anchored: each test window starts right after the
         previous one, but training always goes back to the beginning
-        (expanding window).  Alternatively, rolling windows can be used by
-        adjusting train_start below.
+        (expanding window).
         """
         total_start = self.spread.index[0]
         total_end = self.spread.index[-1]
@@ -376,15 +372,14 @@ class WalkForwardBacktest:
         """
         Annualised Sharpe ratio.
 
-        Aggregates hourly PnL to **daily** before computing mean/std, then
-        annualises by √252. Naïvely annualising hourly PnL by √8760 inflates
-        the Sharpe by ≈√(8760/252) ≈ 6× because most hours have zero PnL
-        (the strategy is in-market a few hours per week, not continuously).
+        Aggregates hourly PnL to daily before computing mean/std, then
+        annualises by √252. Naively annualising hourly PnL by √8760 inflates
+        the Sharpe ~6x because most hours have zero PnL (the strategy is
+        in-market a few hours per week, not continuously).
 
-        CONVENTION NOTE: √252 is the equity-trading-days convention. Power
-        markets clear every calendar day, so √365 would also be defensible
-        and is ≈20% larger; the repo standardises on √252 everywhere and
-        flags the choice here rather than mixing conventions.
+        √252 is the equity-trading-days convention; power markets clear every
+        calendar day, so √365 would also be defensible (≈20% larger). The
+        repo standardises on √252 everywhere.
         """
         if isinstance(pnl.index, pd.DatetimeIndex):
             daily = pnl.resample("1D").sum()
@@ -454,10 +449,8 @@ class WalkForwardBacktest:
         exit_z_range: list[float] | None = None,
     ) -> pd.DataFrame:
         """
-        Grid search over entry/exit z-score thresholds.
-
-        Returns DataFrame of Sharpe ratios — useful for showing robustness
-        is not confined to a single parameter choice.
+        Grid search over entry/exit z-score thresholds; returns Sharpe (and
+        friends) per combination.
         """
         entry_z_range = entry_z_range or [1.0, 1.5, 2.0, 2.5, 3.0]
         exit_z_range = exit_z_range or [0.25, 0.5, 0.75, 1.0]

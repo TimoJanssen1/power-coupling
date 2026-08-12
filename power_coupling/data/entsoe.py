@@ -1,12 +1,12 @@
 """
 ENTSO-E Transparency Platform client wrapper.
 
-Caches raw responses as Parquet in ~/.cache/power_microstructure/entsoe/
+Caches raw responses as Parquet in ~/.cache/power_coupling/entsoe/
 so repeated runs don't burn API quota.  Cache key = (query_name, area, start, end).
 
 Usage
 -----
->>> from power_microstructure.data import EntsoeFetcher
+>>> from power_coupling.data import EntsoeFetcher
 >>> fetcher = EntsoeFetcher(api_key="YOUR_KEY")
 >>> fe = fetcher.forecast_error("DE_LU", "2022-01-01", "2024-01-01")
 """
@@ -25,7 +25,7 @@ from entsoe.exceptions import NoMatchingDataError
 logger = logging.getLogger(__name__)
 
 _CACHE_ROOT = Path(
-    os.environ.get("PM_CACHE_DIR", Path.home() / ".cache" / "power_microstructure" / "entsoe")
+    os.environ.get("PM_CACHE_DIR", Path.home() / ".cache" / "power_coupling" / "entsoe")
 )
 _AREA = "DE_LU"  # Germany-Luxembourg bidding zone (post-2018 market coupling)
 
