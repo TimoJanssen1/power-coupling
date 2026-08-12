@@ -20,7 +20,7 @@ dist/
 .mypy_cache/
 .ruff_cache/
 
-# Notebooks — keep .ipynb, ignore checkpoint dirs and outputs we don't want versioned
+# Notebooks - keep .ipynb, ignore checkpoint dirs and outputs we don't want versioned
 .ipynb_checkpoints/
 
 # Data cache (parquet files are large and reproducible from API)
