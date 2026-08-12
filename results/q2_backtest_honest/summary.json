@@ -5,7 +5,7 @@
     "N_BOOTSTRAP": 2000,
     "signal": "trailing mean of realised (DK1_DA - BE_DA) per delivery hour (legacy columns id3_price - id_continuous), lagged one delivery day",
     "decision_horizon": "before SDAC gate closure 12:00 CET D-1; signal available from ~12:45 CET D-2 (previous day's auction publication)",
-    "executability": "paper spread \u2014 capturing a zonal DA price difference requires cross-zonal transmission rights, not modelled",
+    "executability": "paper spread; capturing a zonal DA price difference requires cross-zonal transmission rights, not modelled",
     "execution_costs_apply_to": "one leg (round-trip cost scenarios)",
     "sharpe_convention": "sqrt(252) headline; sqrt(365) reported alongside"
   },
